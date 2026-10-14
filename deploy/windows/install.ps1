@@ -101,8 +101,10 @@ ADMIN_USERNAME=FILL_ME
 ADMIN_PASSWORD=FILL_ME
 
 # Web address for the library, e.g. library.himtmarine.com, once its DNS points
-# at this server. Leave empty to reach the library at http://<server IP>:8081/
+# at this server. Leave empty to reach the library at http://<server IP>:<port>/,
+# where the port is SITE_PORT, or the first free one from 8081 if that is empty.
 SITE_HOST=
+SITE_PORT=
 "@
   Set-Content -Path $EnvFile -Value $template -Encoding ASCII
 }
@@ -233,7 +235,7 @@ Run nssm @("set", $ServiceName, "AppStderr", "$AppDir\logs\service.log")
 Run nssm @("set", $ServiceName, "AppRotateFiles", "1")
 Run nssm @("set", $ServiceName, "AppRotateBytes", "10485760")
 Run nssm @("set", $ServiceName, "Start", "SERVICE_AUTO_START")
-$environment = @($config.GetEnumerator() | Where-Object { $_.Value -ne "" -and $_.Key -ne "SITE_HOST" } | ForEach-Object { "$($_.Key)=$($_.Value)" })
+$environment = @($config.GetEnumerator() | Where-Object { $_.Value -ne "" -and $_.Key -notin @("SITE_HOST", "SITE_PORT") } | ForEach-Object { "$($_.Key)=$($_.Value)" })
 $environment += "PATH=" + [Environment]::GetEnvironmentVariable("Path", "Machine")
 New-ItemProperty -Force -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName\Parameters" -Name AppEnvironmentExtra -PropertyType MultiString -Value $environment | Out-Null
 Restart-Service $ServiceName -ErrorAction SilentlyContinue
@@ -262,14 +264,38 @@ New-Item -ItemType Directory -Force $SiteDir | Out-Null
 (Get-Content "$AppDir\deploy\windows\web.config" -Raw).Replace("127.0.0.1:8090", "127.0.0.1:$port") | Set-Content -Encoding UTF8 "$SiteDir\web.config"
 
 $hostName = $config["SITE_HOST"]
+
+# Ports already taken by other IIS sites or other programs.
+function Port-Taken($candidate) {
+  foreach ($other in Get-Website | Where-Object { $_.Name -ne $SiteName }) {
+    foreach ($b in $other.Bindings.Collection) {
+      $parts = $b.bindingInformation.Split(":")
+      if ($parts[1] -eq "$candidate" -and (-not $hostName -or -not $parts[2] -or $parts[2] -eq $hostName)) { return $true }
+    }
+  }
+  if ($hostName -and $candidate -eq 80) { return $false }
+  $listener = Get-NetTCPConnection -State Listen -LocalPort $candidate -ErrorAction SilentlyContinue | Where-Object { $_.OwningProcess -ne 4 }
+  return [bool]$listener -or "$candidate" -eq "$port"
+}
+
+$site = Get-Website | Where-Object { $_.Name -eq $SiteName }
 if ($hostName) {
   $sitePort = 80
-  $binding = "*:80:$hostName"
+} elseif ($config["SITE_PORT"]) {
+  $sitePort = [int]$config["SITE_PORT"]
+  if (Port-Taken $sitePort) { throw "Port $sitePort is already used. Change SITE_PORT in $EnvFile and run again." }
 } else {
-  $sitePort = 8081
-  $binding = "*:8081:"
+  # Keep the port from an earlier install if it is still free, else take the first free one.
+  $sitePort = $null
+  if ($site) {
+    $current = [int]($site.Bindings.Collection[0].bindingInformation.Split(":")[1])
+    if (-not (Port-Taken $current)) { $sitePort = $current }
+  }
+  if (-not $sitePort) { $sitePort = 8081..8099 | Where-Object { -not (Port-Taken $_) } | Select-Object -First 1 }
+  if (-not $sitePort) { throw "No free port between 8081 and 8099. Set SITE_PORT in $EnvFile and run again." }
 }
-$site = Get-Website | Where-Object { $_.Name -eq $SiteName }
+$binding = "*:${sitePort}:$hostName"
+if ($site) { Stop-Website $SiteName -ErrorAction SilentlyContinue }
 if (-not $site) {
   New-Website -Name $SiteName -Port $sitePort -HostHeader $hostName -PhysicalPath $SiteDir | Out-Null
 } else {
@@ -281,7 +307,7 @@ if (-not (Get-NetFirewallRule -DisplayName "HIMT-Library $sitePort" -ErrorAction
   New-NetFirewallRule -DisplayName "HIMT-Library $sitePort" -Direction Inbound -Protocol TCP -LocalPort $sitePort -Action Allow | Out-Null
 }
 
-$checkUrl = if ($hostName) { "http://127.0.0.1/api/healthz" } else { "http://127.0.0.1:8081/api/healthz" }
+$checkUrl = "http://127.0.0.1:$sitePort/api/healthz"
 $headers = if ($hostName) { @{ Host = $hostName } } else { @{} }
 $viaIis = $false
 try { $viaIis = (Invoke-WebRequest -UseBasicParsing -Headers $headers $checkUrl).StatusCode -eq 200 } catch { }
@@ -291,7 +317,7 @@ Write-Host ""
 if ($hostName) {
   Write-Host "Done. Open http://$hostName/ in a browser." -ForegroundColor Green
 } else {
-  Write-Host "Done. Open http://<this server's IP address>:8081/ in a browser." -ForegroundColor Green
-  Write-Host "If it does not open from outside, allow TCP port 8081 in the MilesWeb firewall too." -ForegroundColor Green
+  Write-Host "Done. Open http://<this server's IP address>:$sitePort/ in a browser." -ForegroundColor Green
+  Write-Host "If it does not open from outside, allow TCP port $sitePort in the MilesWeb firewall too." -ForegroundColor Green
 }
 Write-Host "Staff sign in at /staff/login with ADMIN_USERNAME and ADMIN_PASSWORD." -ForegroundColor Green

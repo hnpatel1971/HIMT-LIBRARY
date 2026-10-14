@@ -10,7 +10,7 @@ the PostgreSQL that HIMT-LMS already runs (a separate database called
 | Settings | `C:\himt-lms-config\himt-lms.env` | `C:\himt-library-config\himt-library.env` |
 | Windows service | HIMT-LMS (port 8080) | HIMT-Library (port 8090) |
 | Database | `lms` | `library` |
-| IIS site | himt-lms (port 80) | himt-library (port 8081, or port 80 with its own web address) |
+| IIS site | himt-lms (port 80) | himt-library (first free port from 8081, or port 80 with its own web address) |
 
 ## First install
 
@@ -32,7 +32,7 @@ the PostgreSQL that HIMT-LMS already runs (a separate database called
    save, and run the same command again. If the library has its own web
    address (for example `library.himtmarine.com`), put it in `SITE_HOST` first
    and point that name's DNS record at the server.
-6. When it says Done, open `http://<server IP>:8081/` (or your web address).
+6. When it says Done, open the address it prints, such as `http://<server IP>:8082/` (or your web address).
    The public catalogue is at `/` and staff sign in at `/staff/login`.
 
 Git may ask you to sign in to GitHub the first time, because the repository is
@@ -50,7 +50,7 @@ service. Data and settings are kept.
 
 - Logs: `C:\himt-library\logs\service.log`.
 - Restart: `Restart-Service HIMT-Library`.
-- Port 8081 must also be open in the MilesWeb firewall if the library does not
+- The library's port must also be open in the MilesWeb firewall if the library does not
   open from outside the server.
 - Backups: the `library` database is in the same PostgreSQL as the LMS, so a
   backup of that PostgreSQL covers both. For a library-only backup:
