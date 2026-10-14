@@ -15,7 +15,7 @@ the PostgreSQL that HIMT-LMS already runs (a separate database called
 ## First install
 
 1. Sign in to the server with Remote Desktop.
-2. Download `deploy/windows/install.ps1` from the HIMT-Library repository to
+2. Download `deploy/windows/install.ps1` from the HIMT-LIBRARY repository to
    the server, for example to `C:\Users\Administrator\Downloads`.
 3. Copy `library-data.sql` (the old SLiMS data, already converted) into
    `C:\himt-library-config\`. Create the folder if it does not exist yet.
