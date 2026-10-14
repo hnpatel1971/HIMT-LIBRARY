@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import session from "express-session";
-import MySQLStoreFactory from "express-mysql-session";
+import connectPg from "connect-pg-simple";
 import { eq } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import { db, pool, schema } from "./db/index.js";
@@ -27,12 +27,18 @@ function noteFailure(ip: string) {
   failures.set(ip, { n: fresh ? 1 : f!.n + 1, until: Date.now() + 15 * 60_000 });
 }
 
+/** Postgres error code, also when Drizzle wraps the driver error. */
+function dbErrorCode(err: unknown) {
+  const e = err as { code?: string; cause?: { code?: string } } | undefined;
+  return e?.code ?? e?.cause?.code;
+}
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "1mb" }));
 
-  const MySQLStore = MySQLStoreFactory(session as never);
+  const PgStore = connectPg(session);
   app.use(
     session({
       name: "himt_lib_sid",
@@ -40,11 +46,12 @@ export function createApp() {
       resave: false,
       saveUninitialized: false,
       rolling: true,
-      store: process.env.NODE_ENV === "test" ? undefined : new MySQLStore({ createDatabaseTable: true }, pool as never),
+      store: process.env.NODE_ENV === "test" ? undefined : new PgStore({ pool, createTableIfMissing: true }),
       cookie: {
         httpOnly: true,
         sameSite: "lax",
-        secure: process.env.COOKIE_SECURE === "true",
+        // Secure over HTTPS (IIS sets X-Forwarded-Proto), plain over HTTP.
+        secure: "auto",
         maxAge: 8 * 60 * 60 * 1000,
       },
     }),
@@ -99,7 +106,7 @@ export function createApp() {
       res.status(err.status).json({ error: err.message, overridable: err.overridable || undefined });
     } else if (err instanceof ZodError) {
       res.status(400).json({ error: err.issues.map((i) => i.message).join("; ") });
-    } else if ((err as { code?: string })?.code === "ER_DUP_ENTRY") {
+    } else if (dbErrorCode(err) === "23505") {
       res.status(400).json({ error: "That value is already used" });
     } else {
       console.error(err);

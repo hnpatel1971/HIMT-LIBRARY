@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq, sql } from "drizzle-orm";
-import { migrate } from "drizzle-orm/mysql2/migrator";
+import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { db, schema } from "./index.js";
 import { hashPassword } from "../auth.js";
 
@@ -23,14 +23,17 @@ export async function migrateAndSeed() {
     ]);
   }
 
-  const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(schema.users);
-  if (Number(n) === 0) {
-    const username = process.env.ADMIN_USERNAME || "admin";
-    const password = process.env.ADMIN_PASSWORD;
-    if (!password) {
-      console.warn("No staff users yet. Set ADMIN_USERNAME and ADMIN_PASSWORD to create the first admin.");
-      return;
-    }
+  // Make sure the admin named in the settings file exists. An existing user's
+  // password is left alone, so changing it in the app sticks.
+  const username = process.env.ADMIN_USERNAME?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  if (!username || !password) {
+    const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(schema.users);
+    if (Number(n) === 0) console.warn("No staff users yet. Set ADMIN_USERNAME and ADMIN_PASSWORD to create the first admin.");
+    return;
+  }
+  const [existing] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.username, username));
+  if (!existing) {
     await db.insert(schema.users).values({
       username,
       name: "Administrator",

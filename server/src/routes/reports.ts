@@ -7,6 +7,7 @@ import { balanceSql, overdueWhere } from "../circulation.js";
 import { addDays, today } from "../calendar.js";
 import { notFound } from "../errors.js";
 import { listTitles, titleDetail } from "./catalogue.js";
+import { sameCode } from "../codes.js";
 
 const { loans, copies, titles, members, memberTypes, locations, collectionTypes, formats, visits, settings, fines, payments } =
   schema;
@@ -17,17 +18,17 @@ export const reportsRouter = Router();
 
 reportsRouter.get("/dashboard", requireRole("assistant"), async (_req, res) => {
   const on = today();
-  const [row] = await db.execute(sql`SELECT
+  const { rows } = await db.execute(sql`SELECT
     (SELECT count(*) FROM titles) AS titles,
     (SELECT count(*) FROM copies) AS copies,
     (SELECT count(*) FROM members WHERE active) AS members,
-    (SELECT count(*) FROM loans WHERE returned_on IS NULL) AS onLoan,
+    (SELECT count(*) FROM loans WHERE returned_on IS NULL) AS "onLoan",
     (SELECT count(*) FROM loans WHERE returned_on IS NULL AND due_on < ${on}) AS overdue,
-    (SELECT count(*) FROM loans WHERE issued_on = ${on}) AS issuedToday,
-    (SELECT count(*) FROM loans WHERE returned_on = ${on}) AS returnedToday,
-    (SELECT count(*) FROM visits WHERE DATE(at) = ${on}) AS visitsToday,
-    (SELECT COALESCE(SUM(amount),0) FROM fines WHERE NOT waived) - (SELECT COALESCE(SUM(amount),0) FROM payments) AS finesOutstanding`);
-  const r = (row as unknown as Record<string, unknown>[])[0];
+    (SELECT count(*) FROM loans WHERE issued_on = ${on}) AS "issuedToday",
+    (SELECT count(*) FROM loans WHERE returned_on = ${on}) AS "returnedToday",
+    (SELECT count(*) FROM visits WHERE DATE(at) = ${on}) AS "visitsToday",
+    (SELECT COALESCE(SUM(amount),0) FROM fines WHERE NOT waived) - (SELECT COALESCE(SUM(amount),0) FROM payments) AS "finesOutstanding"`);
+  const r = rows[0];
   res.json(Object.fromEntries(Object.entries(r).map(([k, v]) => [k, n(v)])));
 });
 
@@ -99,13 +100,13 @@ reportsRouter.get("/reports/fines", requireRole("assistant"), async (_req, res) 
       code: members.code,
       name: members.name,
       phone: members.phone,
-      charged: sql<string>`(SELECT COALESCE(SUM(amount),0) FROM fines f WHERE f.member_id = ${members.id} AND NOT f.waived)`,
-      paid: sql<string>`(SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.member_id = ${members.id})`,
-      balance: balanceSql(members.id),
+      charged: sql<string>`(SELECT COALESCE(SUM(amount),0) FROM fines f WHERE f.member_id = "members"."id" AND NOT f.waived)`,
+      paid: sql<string>`(SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.member_id = "members"."id")`,
+      balance: balanceSql,
     })
     .from(members)
-    .where(sql`${balanceSql(members.id)} > 0`)
-    .orderBy(sql`balance DESC`);
+    .where(sql`${balanceSql} > 0`)
+    .orderBy(sql`${balanceSql} DESC`);
   const out = rows.map((r) => ({ ...r, charged: n(r.charged), paid: n(r.paid), balance: n(r.balance) }));
   const [tot] = await db.select({ charged: sql`COALESCE(SUM(amount),0)` }).from(fines).where(eq(fines.waived, false));
   const [paid] = await db.select({ paid: sql`COALESCE(SUM(amount),0)` }).from(payments);
@@ -156,7 +157,7 @@ reportsRouter.get("/reports/visits", requireRole("assistant"), async (req, res) 
 /** Library entrance check-in by member ID. */
 reportsRouter.post("/visits", requireRole("assistant"), async (req, res) => {
   const { memberCode } = z.object({ memberCode: z.string().trim().min(1) }).parse(req.body);
-  const [m] = await db.select().from(members).where(eq(members.code, memberCode));
+  const [m] = await db.select().from(members).where(sameCode(members.code, memberCode));
   if (!m) throw notFound(`Member ${memberCode}`);
   await db.insert(visits).values({ memberId: m.id, visitorName: m.name });
   res.status(201).json({ name: m.name });

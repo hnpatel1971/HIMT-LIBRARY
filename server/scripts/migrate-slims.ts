@@ -2,7 +2,7 @@
  * Copies the HIMT library data out of the old SLiMS database into this system.
  *
  *   SLIMS_DATABASE_URL=mysql://user:pass@host/himt_lib \
- *   DATABASE_URL=mysql://user:pass@host/himt_library \
+ *   DATABASE_URL=postgres://user:pass@host/library \
  *   pnpm migrate:slims [--reset]
  *
  * The target must be empty (a fresh install), or pass --reset to wipe the
@@ -27,6 +27,8 @@ const clean = (v: unknown) => {
   return s && s !== "0000-00-00" ? s : null;
 };
 const day = (v: unknown) => clean(v)?.slice(0, 10) ?? null;
+// SLiMS stores local (India) time without a zone.
+const ist = (v: unknown) => new Date(`${String(v).trim().replace(" ", "T")}+05:30`);
 const report: string[] = [];
 const warn = (msg: string) => report.push(`WARNING: ${msg}`);
 
@@ -37,13 +39,11 @@ async function insertChunks<T extends Record<string, unknown>>(table: any, rows:
 await migrateAndSeed();
 
 const tables = ["visits", "payments", "fines", "loans", "copies", "titles", "members", "member_types", "formats", "collection_types", "locations", "holidays"];
-const [{ n }] = (await db.execute(sql`SELECT (SELECT count(*) FROM titles) + (SELECT count(*) FROM members) AS n`))[0] as unknown as Row[];
+const [{ n }] = (await db.execute(sql`SELECT (SELECT count(*) FROM titles) + (SELECT count(*) FROM members) AS n`)).rows as Row[];
 if (Number(n) > 0) {
   if (!reset) throw new Error("The target already has titles or members. Run with --reset to replace them");
-  await db.execute(sql`SET FOREIGN_KEY_CHECKS = 0`);
-  for (const t of tables) await db.execute(sql.raw(`DELETE FROM \`${t}\``));
+  await db.execute(sql.raw(`TRUNCATE ${tables.join(", ")} RESTART IDENTITY CASCADE`));
   await db.execute(sql`DELETE FROM audit_log WHERE action NOT LIKE 'auth.%' AND action NOT LIKE 'user.%'`);
-  await db.execute(sql`SET FOREIGN_KEY_CHECKS = 1`);
 }
 
 // Lookup lists keep their SLiMS names; we map old ids to new ids.
@@ -52,7 +52,7 @@ async function lookup(table: any, rows: Row[], idCol: string, nameCol: string) {
   for (const r of rows) {
     const name = clean(r[nameCol]);
     if (!name) continue;
-    const [{ id }] = await db.insert(table).values({ name }).$returningId();
+    const [{ id }] = await db.insert(table).values({ name }).returning({ id: table.id });
     map.set(String(r[idCol]), id);
   }
   return map;
@@ -84,7 +84,7 @@ for (const t of await q("SELECT * FROM mst_member_type")) {
       reserveLimit: t.enable_reserve ? Number(t.reserve_limit) : 0,
       membershipDays: Number(t.member_periode) || 365,
     })
-    .$returningId();
+    .returning({ id: schema.memberTypes.id });
   typeIds.set(String(t.member_type_id), id);
 }
 
@@ -112,7 +112,7 @@ for (const m of await q("SELECT * FROM member")) {
       active: !m.is_pending,
       notes: clean(m.member_notes),
     })
-    .$returningId();
+    .returning({ id: schema.members.id });
   memberIds.set(String(m.member_id).trim(), id);
 }
 
@@ -126,7 +126,7 @@ for (const r of await q(`SELECT DISTINCT x.member_id FROM (
   const [{ id }] = await db
     .insert(schema.members)
     .values({ code, name: `Deleted member ${code}`, typeId: fallbackType, active: false, notes: "Deleted in SLiMS before migration" })
-    .$returningId();
+    .returning({ id: schema.members.id });
   memberIds.set(code, id);
   warn(`member ${code} was deleted in SLiMS but has loans or fines; kept as an inactive placeholder`);
 }
@@ -169,9 +169,9 @@ for (const b of await q(`SELECT b.*, p.publisher_name, pl.place_name, l.language
       language: clean(b.language_name),
       formatId: formatIds.get(String(b.gmd_id)) ?? null,
       notes: clean(b.notes),
-      createdAt: clean(b.input_date) ? new Date(b.input_date) : new Date(),
+      createdAt: clean(b.input_date) ? ist(b.input_date) : new Date(),
     })
-    .$returningId();
+    .returning({ id: schema.titles.id });
   titleIds.set(k, id);
 }
 
@@ -201,7 +201,7 @@ for (const i of await q("SELECT * FROM item")) {
       invoice: clean(i.invoice),
       receivedOn: day(i.received_date),
     })
-    .$returningId();
+    .returning({ id: schema.copies.id });
   copyIds.set(code, id);
 }
 
@@ -232,7 +232,7 @@ for (const l of await q("SELECT * FROM loan ORDER BY loan_date, loan_id")) {
       returnedOn,
       renewCount: Number(l.renewed) || 0,
     })
-    .$returningId();
+    .returning({ id: schema.loans.id });
   loanIds.set(String(l.loan_id), id);
   if (!returned) openByCopy.set(copyId, id);
 }
@@ -263,7 +263,7 @@ const weeklyOff = new Set<number>();
 for (const h of await q("SELECT * FROM holiday")) {
   const date = day(h.holiday_date);
   if (date) {
-    await db.insert(schema.holidays).values({ date, description: clean(h.description) ?? "Holiday" }).onDuplicateKeyUpdate({ set: { date } });
+    await db.insert(schema.holidays).values({ date, description: clean(h.description) ?? "Holiday" }).onConflictDoUpdate({ target: schema.holidays.date, set: { date } });
   } else if (clean(h.holiday_dayname)) {
     const d = dayNumber[String(h.holiday_dayname).toLowerCase().slice(0, 3)];
     if (d !== undefined) weeklyOff.add(d);
@@ -271,7 +271,7 @@ for (const h of await q("SELECT * FROM holiday")) {
 }
 if (weeklyOff.size) {
   const value = [...weeklyOff].sort();
-  await db.insert(schema.settings).values({ key: "weekly_off", value }).onDuplicateKeyUpdate({ set: { value } });
+  await db.insert(schema.settings).values({ key: "weekly_off", value }).onConflictDoUpdate({ target: schema.settings.key, set: { value } });
 }
 const [libName] = await q("SELECT setting_value FROM setting WHERE setting_name = 'library_name'");
 const nameMatch = libName && /s:\d+:"(.*)";/.exec(libName.setting_value);
@@ -279,14 +279,14 @@ if (nameMatch?.[1]) {
   await db
     .insert(schema.settings)
     .values({ key: "library_name", value: nameMatch[1] })
-    .onDuplicateKeyUpdate({ set: { value: nameMatch[1] } });
+    .onConflictDoUpdate({ target: schema.settings.key, set: { value: nameMatch[1] } });
 }
 
 // Visits
 const visitRows = (await q("SELECT * FROM visitor_count")).map((v) => ({
   memberId: memberIds.get(String(v.member_id).trim()) ?? null,
   visitorName: String(v.member_name ?? "Visitor").trim().slice(0, 128) || "Visitor",
-  at: new Date(v.checkin_date),
+  at: ist(v.checkin_date),
 }));
 await insertChunks(schema.visits, visitRows);
 
@@ -307,7 +307,7 @@ for (const u of await q("SELECT * FROM user")) {
 }
 
 const count = async (t: string) =>
-  Number(((await db.execute(sql.raw(`SELECT count(*) AS n FROM \`${t}\``)))[0] as unknown as Row[])[0].n);
+  Number(((await db.execute(sql.raw(`SELECT count(*) AS n FROM ${t}`))).rows as Row[])[0].n);
 console.log("Migration finished:");
 for (const t of ["member_types", "members", "titles", "copies", "loans", "fines", "payments", "holidays", "visits"]) {
   console.log(`  ${t.padEnd(14)} ${await count(t)}`);

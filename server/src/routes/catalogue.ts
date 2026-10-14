@@ -47,12 +47,12 @@ export function titleSearch(q: string | undefined) {
   const term = q?.trim();
   if (!term) return undefined;
   const like = `%${term}%`;
-  return sql`(${titles.title} LIKE ${like}
-    OR CAST(${titles.authors} AS CHAR) LIKE ${like}
-    OR CAST(${titles.subjects} AS CHAR) LIKE ${like}
+  return sql`(${titles.title} ILIKE ${like}
+    OR ${titles.authors}::text ILIKE ${like}
+    OR ${titles.subjects}::text ILIKE ${like}
     OR ${titles.isbn} = ${term}
-    OR ${titles.callNumber} LIKE ${like}
-    OR EXISTS (SELECT 1 FROM copies c WHERE c.title_id = ${titles.id} AND c.barcode = ${term}))`;
+    OR ${titles.callNumber} ILIKE ${like}
+    OR EXISTS (SELECT 1 FROM copies c WHERE c.title_id = "titles"."id" AND lower(c.barcode) = lower(${term})))`;
 }
 
 export async function listTitles(q: string | undefined, page: number, pageSize = 25) {
@@ -66,8 +66,8 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
       year: titles.year,
       callNumber: titles.callNumber,
       isbn: titles.isbn,
-      copies: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = ${titles.id})`,
-      available: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = ${titles.id} AND c.status = 'available'
+      copies: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id")`,
+      available: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id" AND c.status = 'available'
         AND NOT EXISTS (SELECT 1 FROM loans l WHERE l.copy_id = c.id AND l.returned_on IS NULL))`,
     })
     .from(titles)
@@ -149,7 +149,7 @@ catalogueRouter.get("/titles/:id", requireRole("assistant"), async (req, res) =>
 
 catalogueRouter.post("/titles", requireRole("librarian"), async (req, res) => {
   const data = titleInput.parse(req.body);
-  const [{ id }] = await db.insert(titles).values(data).$returningId();
+  const [{ id }] = await db.insert(titles).values(data).returning({ id: titles.id });
   await audit(db, req.user!.id, "title.create", { id, title: data.title });
   res.status(201).json({ id });
 });
@@ -157,8 +157,8 @@ catalogueRouter.post("/titles", requireRole("librarian"), async (req, res) => {
 catalogueRouter.put("/titles/:id", requireRole("librarian"), async (req, res) => {
   const data = titleInput.parse(req.body);
   const id = Number(req.params.id);
-  const [result] = await db.update(titles).set({ ...data, updatedAt: new Date() }).where(eq(titles.id, id));
-  if (!result.affectedRows) throw notFound("Title");
+  const result = await db.update(titles).set({ ...data, updatedAt: new Date() }).where(eq(titles.id, id));
+  if (!result.rowCount) throw notFound("Title");
   await audit(db, req.user!.id, "title.update", { id });
   res.json({ id });
 });
@@ -177,7 +177,7 @@ catalogueRouter.post("/titles/:id/copies", requireRole("librarian"), async (req,
   const data = copyInput.parse(req.body);
   const [exists] = await db.select({ id: copies.id }).from(copies).where(eq(copies.barcode, data.barcode));
   if (exists) throw badRequest(`Barcode ${data.barcode} is already used`);
-  const [{ id }] = await db.insert(copies).values({ ...data, titleId }).$returningId();
+  const [{ id }] = await db.insert(copies).values({ ...data, titleId }).returning({ id: copies.id });
   await audit(db, req.user!.id, "copy.create", { id, barcode: data.barcode });
   res.status(201).json({ id });
 });
@@ -187,8 +187,8 @@ catalogueRouter.put("/copies/:id", requireRole("librarian"), async (req, res) =>
   const id = Number(req.params.id);
   const [clash] = await db.select({ id: copies.id }).from(copies).where(eq(copies.barcode, data.barcode));
   if (clash && clash.id !== id) throw badRequest(`Barcode ${data.barcode} is already used`);
-  const [result] = await db.update(copies).set(data).where(eq(copies.id, id));
-  if (!result.affectedRows) throw notFound("Copy");
+  const result = await db.update(copies).set(data).where(eq(copies.id, id));
+  if (!result.rowCount) throw notFound("Copy");
   await audit(db, req.user!.id, "copy.update", { id });
   res.json({ id });
 });
@@ -212,7 +212,7 @@ catalogueRouter.get("/next-barcode", requireRole("librarian"), async (req, res) 
   const [row] = await db
     .select({ barcode: copies.barcode })
     .from(copies)
-    .where(sql`${copies.barcode} REGEXP ${re}`)
+    .where(sql`${copies.barcode} ~ ${re}`)
     .orderBy(desc(copies.barcode))
     .limit(1);
   const n = row ? Number(row.barcode.slice(prefix.length, prefix.length + zeros.length)) + 1 : 1;

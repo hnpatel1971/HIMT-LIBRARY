@@ -21,7 +21,7 @@ for (const [path, table] of Object.entries(lookups)) {
   });
   adminRouter.post(`/${path}`, requireRole("librarian"), async (req, res) => {
     const { name } = nameInput.parse(req.body);
-    const [{ id }] = await db.insert(table).values({ name }).$returningId();
+    const [{ id }] = await db.insert(table).values({ name }).returning({ id: table.id });
     res.status(201).json({ id, name });
   });
   adminRouter.put(`/${path}/:id`, requireRole("librarian"), async (req, res) => {
@@ -54,7 +54,7 @@ adminRouter.get("/member-types", requireRole("assistant"), async (_req, res) => 
 });
 adminRouter.post("/member-types", requireRole("admin"), async (req, res) => {
   const data = memberTypeInput.parse(req.body);
-  const [{ id }] = await db.insert(memberTypes).values(data).$returningId();
+  const [{ id }] = await db.insert(memberTypes).values(data).returning({ id: memberTypes.id });
   await audit(db, req.user!.id, "member_type.create", { id, ...data });
   res.status(201).json({ id });
 });
@@ -77,7 +77,7 @@ adminRouter.get("/holidays", requireRole("assistant"), async (_req, res) => {
 });
 adminRouter.post("/holidays", requireRole("librarian"), async (req, res) => {
   const data = holidayInput.parse(req.body);
-  const [{ id }] = await db.insert(holidays).values(data).$returningId();
+  const [{ id }] = await db.insert(holidays).values(data).returning({ id: holidays.id });
   res.status(201).json({ id });
 });
 adminRouter.delete("/holidays/:id", requireRole("librarian"), async (req, res) => {
@@ -89,7 +89,7 @@ adminRouter.put("/weekly-off", requireRole("admin"), async (req, res) => {
   await db
     .insert(settings)
     .values({ key: "weekly_off", value: days })
-    .onDuplicateKeyUpdate({ set: { value: days } });
+    .onConflictDoUpdate({ target: settings.key, set: { value: days } });
   res.json({ weeklyOff: days });
 });
 
@@ -115,7 +115,7 @@ adminRouter.post("/users", requireRole("admin"), async (req, res) => {
   const [{ id }] = await db
     .insert(users)
     .values({ ...data, passwordHash: await hashPassword(data.password) })
-    .$returningId();
+    .returning({ id: users.id });
   await audit(db, req.user!.id, "user.create", { id, username: data.username, role: data.role });
   res.status(201).json({ id });
 });
@@ -125,11 +125,11 @@ adminRouter.put("/users/:id", requireRole("admin"), async (req, res) => {
   if (id === req.user!.id && (!data.active || data.role !== "admin")) {
     throw badRequest("You can't remove your own admin access");
   }
-  const [result] = await db
+  const result = await db
     .update(users)
     .set({ ...data, ...(password ? { passwordHash: await hashPassword(password) } : {}) })
     .where(eq(users.id, id));
-  if (!result.affectedRows) throw notFound("User");
+  if (!result.rowCount) throw notFound("User");
   await audit(db, req.user!.id, "user.update", { id, role: data.role, active: data.active, passwordChanged: !!password });
   res.json({ id });
 });
