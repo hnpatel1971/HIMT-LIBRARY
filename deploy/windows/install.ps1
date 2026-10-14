@@ -217,7 +217,10 @@ $listener = Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction Sil
 if ($listener) {
   $owner = Get-CimInstance Win32_Process -Filter "ProcessId=$($listener.OwningProcess)"
   $ours = $owner -and $owner.CommandLine -like "*himt-library*"
-  if (-not $ours) { throw "Port $port is already used by another program. Set PORT in $EnvFile to a free port and run again." }
+  if (-not $ours) {
+    $name = if ($owner) { "$($owner.Name) (process $($owner.ProcessId))" } else { "another program" }
+    throw "Port $port is already used by $name. Set PORT in $EnvFile to a free port, such as 8095, and run again."
+  }
 }
 New-Item -ItemType Directory -Force "$AppDir\logs" | Out-Null
 if (-not (Get-Service $ServiceName -ErrorAction SilentlyContinue)) {
