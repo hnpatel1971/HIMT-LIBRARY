@@ -3,7 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { api, ApiError, queryClient, type Me, type MemberDetail } from "../api";
 import { isLibrarian } from "../App";
-import { ErrorNote, formatDate, Notice, rupees } from "../ui";
+import { ErrorNote, formatDate, Notice, rupees, ScanInput } from "../ui";
 
 interface Returned {
   barcode: string;
@@ -22,6 +22,14 @@ export function Circulation({ me }: { me: Me }) {
   const [issued, setIssued] = useState<string[]>([]);
   const [returned, setReturned] = useState<Returned[]>([]);
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const returnRef = useRef<HTMLInputElement>(null);
+
+  const findMember = (code: string) => {
+    setMemberCode(code || null);
+    setIssued([]);
+    issue.reset();
+    setTimeout(() => barcodeRef.current?.focus(), 50);
+  };
 
   const member = useQuery({
     queryKey: ["member-code", memberCode],
@@ -45,6 +53,7 @@ export function Circulation({ me }: { me: Me }) {
       refresh();
       barcodeRef.current?.focus();
     },
+    onError: () => barcodeRef.current?.select(),
   });
 
   const ret = useMutation({
@@ -53,7 +62,10 @@ export function Circulation({ me }: { me: Me }) {
       setReturned((x) => [r, ...x]);
       setReturnCode("");
       refresh();
+      returnRef.current?.focus();
     },
+    // Select the code so the next scan replaces it instead of adding to it.
+    onError: () => returnRef.current?.select(),
   });
 
   const renew = useMutation({
@@ -75,18 +87,16 @@ export function Circulation({ me }: { me: Me }) {
             className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              setMemberCode(memberInput.trim() || null);
-              setIssued([]);
-              issue.reset();
-              setTimeout(() => barcodeRef.current?.focus(), 50);
+              findMember(memberInput.trim());
             }}
           >
-            <input
+            <ScanInput
               className="input"
               autoFocus
               placeholder="Scan or type member ID"
               value={memberInput}
-              onChange={(e) => setMemberInput(e.target.value)}
+              onChange={setMemberInput}
+              onScan={findMember}
             />
             <button className="btn-secondary">Find</button>
           </form>
@@ -123,13 +133,14 @@ export function Circulation({ me }: { me: Me }) {
                   if (barcode.trim()) issue.mutate(false);
                 }}
               >
-                <input
+                <ScanInput
                   ref={barcodeRef}
                   className="input font-mono"
                   placeholder="Scan book barcode to issue"
                   value={barcode}
-                  onChange={(e) => {
-                    setBarcode(e.target.value);
+                  onScan={() => issue.mutate(false)}
+                  onChange={(v) => {
+                    setBarcode(v);
                     issue.reset();
                   }}
                 />
@@ -208,12 +219,16 @@ export function Circulation({ me }: { me: Me }) {
               if (returnCode.trim()) ret.mutate(returnCode.trim());
             }}
           >
-            <input
+            <ScanInput
+              ref={returnRef}
               className="input font-mono"
               placeholder="Scan book barcode to return"
               value={returnCode}
-              onChange={(e) => {
-                setReturnCode(e.target.value);
+              onScan={(code) => {
+                if (!ret.isPending) ret.mutate(code);
+              }}
+              onChange={(v) => {
+                setReturnCode(v);
                 ret.reset();
               }}
             />

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api, queryClient } from "../api";
-import { ErrorNote, Notice } from "../ui";
+import { ErrorNote, Notice, ScanInput } from "../ui";
 
 export function VisitorCheckIn() {
   const [code, setCode] = useState("");
@@ -25,13 +25,16 @@ export function VisitorCheckIn() {
           if (code.trim()) checkIn.mutate();
         }}
       >
-        <input
+        <ScanInput
           className="input py-3 text-lg"
           autoFocus
           placeholder="Scan member ID card"
           value={code}
-          onChange={(e) => {
-            setCode(e.target.value);
+          onScan={() => {
+            if (!checkIn.isPending) checkIn.mutate();
+          }}
+          onChange={(v) => {
+            setCode(v);
             checkIn.reset();
           }}
         />

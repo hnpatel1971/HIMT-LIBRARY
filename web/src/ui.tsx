@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { forwardRef, useEffect, useRef, useState, type InputHTMLAttributes, type ReactNode } from "react";
 
 export const rupees = (n: number | string | null | undefined) =>
   `₹${Number(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -104,3 +104,62 @@ export function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+type ScanInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> & {
+  value: string;
+  onChange: (value: string) => void;
+  /** Called with the trimmed code when a scan or typed entry is complete. */
+  onScan: (code: string) => void;
+};
+
+/**
+ * A text box for barcode scanners. Scanners type the code very fast and then
+ * usually press Enter, but some are set to send Tab or nothing at all. Enter
+ * and Tab both finish the entry, and a fast burst of keys followed by a short
+ * pause counts as a finished scan too. Typing by hand still needs Enter.
+ */
+export const ScanInput = forwardRef<HTMLInputElement, ScanInputProps>(function ScanInput(
+  { value, onChange, onScan, onKeyDown, ...rest },
+  ref,
+) {
+  const keys = useRef<number[]>([]);
+  const timer = useRef<number | undefined>(undefined);
+  const latest = useRef(value);
+  latest.current = value;
+
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+
+  const finish = () => {
+    window.clearTimeout(timer.current);
+    keys.current = [];
+    const code = latest.current.trim();
+    if (code) onScan(code);
+  };
+
+  return (
+    <input
+      ref={ref}
+      autoComplete="off"
+      spellCheck={false}
+      {...rest}
+      value={value}
+      onChange={(e) => {
+        onChange(e.target.value);
+        const now = performance.now();
+        keys.current = [...keys.current.filter((t) => now - t < 1000), now];
+        window.clearTimeout(timer.current);
+        const k = keys.current;
+        // At least 4 keys, each under 50 ms apart: a scanner, not a person.
+        const burst = k.length >= 4 && k.slice(1).every((t, i) => t - k[i] < 50);
+        if (burst) timer.current = window.setTimeout(finish, 150);
+      }}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        if (e.key === "Enter" || (e.key === "Tab" && latest.current.trim())) {
+          e.preventDefault();
+          finish();
+        }
+      }}
+    />
+  );
+});
