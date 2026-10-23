@@ -12,7 +12,11 @@ interface Returned {
   memberCode: string;
   daysLate: number;
   fine: number;
+  /** Set when the book was re-issued rather than returned. */
+  dueOn?: string;
 }
+
+type ReissueVars = { loanId?: number; barcode?: string; override?: boolean };
 
 export function Circulation({ me }: { me: Me }) {
   const [memberInput, setMemberInput] = useState("");
@@ -68,10 +72,29 @@ export function Circulation({ me }: { me: Me }) {
     onError: () => returnRef.current?.select(),
   });
 
-  const renew = useMutation({
-    mutationFn: (loanId: number) => api("/circulation/renew", { body: { loanId } }),
-    onSuccess: refresh,
+  const reissue = useMutation({
+    mutationFn: (vars: ReissueVars) => api<Returned>("/circulation/reissue", { body: vars }),
+    onSuccess: (r, vars) => {
+      setReturned((x) => [r, ...x]);
+      if (vars.barcode) setReturnCode("");
+      refresh();
+    },
+    onError: (_e, vars) => {
+      if (vars.barcode) returnRef.current?.select();
+    },
   });
+  const reissueErr = reissue.error instanceof ApiError ? reissue.error : null;
+  const reissueVars = reissue.variables;
+  const reissueProblem = reissueErr && (
+    <div className="space-y-2">
+      <ErrorNote error={reissueErr} />
+      {reissueErr.overridable && isLibrarian(me) && reissueVars && (
+        <button className="btn-secondary" onClick={() => reissue.mutate({ ...reissueVars, override: true })}>
+          Re-issue anyway (librarian override)
+        </button>
+      )}
+    </div>
+  );
 
   const issueErr = issue.error instanceof ApiError ? issue.error : null;
   const m = member.data;
@@ -188,11 +211,11 @@ export function Circulation({ me }: { me: Me }) {
                           <td className="whitespace-nowrap text-right">
                             <button
                               className="text-sm text-brand-700 underline disabled:opacity-40"
-                              disabled={l.overdue || l.renewCount >= m.type.renewLimit || renew.isPending}
-                              title={l.overdue ? "Overdue items must be returned" : `Renewed ${l.renewCount} of ${m.type.renewLimit} times`}
-                              onClick={() => renew.mutate(l.id)}
+                              disabled={reissue.isPending}
+                              title={`Re-issued ${l.renewCount} of ${m.type.renewLimit} times${l.overdue ? ". The late fine is charged first" : ""}`}
+                              onClick={() => reissue.mutate({ loanId: l.id })}
                             >
-                              Renew
+                              Re-issue
                             </button>
                             <button className="ml-3 text-sm text-brand-700 underline" onClick={() => ret.mutate(l.barcode)}>
                               Return
@@ -203,7 +226,7 @@ export function Circulation({ me }: { me: Me }) {
                     </tbody>
                   </table>
                 )}
-                <ErrorNote error={renew.error} />
+                {reissueVars?.loanId && reissueProblem}
               </div>
             </div>
           )}
@@ -211,7 +234,10 @@ export function Circulation({ me }: { me: Me }) {
 
         <section className="card space-y-4 lg:col-span-2">
           <h2>Quick return</h2>
-          <p className="text-sm text-slate-500">Scan any returned book. Late fines are added to the member automatically.</p>
+          <p className="text-sm text-slate-500">
+            Scan a book to return it, or scan it and press Re-issue to lend it again to the same member. Late fines are added
+            automatically.
+          </p>
           <form
             className="flex gap-2"
             onSubmit={(e) => {
@@ -221,7 +247,7 @@ export function Circulation({ me }: { me: Me }) {
           >
             <ScanInput
               ref={returnRef}
-              className="input font-mono"
+              className="input min-w-0 font-mono"
               placeholder="Scan book barcode to return"
               value={returnCode}
               onScan={(code) => {
@@ -235,16 +261,29 @@ export function Circulation({ me }: { me: Me }) {
             <button className="btn-primary" disabled={ret.isPending || !returnCode.trim()}>
               Return
             </button>
+            <button
+              type="button"
+              className="btn-secondary whitespace-nowrap"
+              disabled={reissue.isPending || !returnCode.trim()}
+              onClick={() => {
+                ret.reset();
+                reissue.mutate({ barcode: returnCode.trim() });
+              }}
+            >
+              Re-issue
+            </button>
           </form>
           <ErrorNote error={ret.error} />
+          {reissueVars?.barcode && reissueProblem}
           {returned.map((r, i) => (
             <Notice key={`${r.barcode}-${i}`} tone={r.fine > 0 ? "amber" : "green"}>
               <div>
-                Returned <span className="font-mono">{r.barcode}</span> · {r.title}
+                {r.dueOn ? "Re-issued" : "Returned"} <span className="font-mono">{r.barcode}</span> · {r.title}
               </div>
               <div className="text-xs">
-                from {r.member} ({r.memberCode})
-                {r.fine > 0 ? ` · ${r.daysLate} day(s) late, fine ${rupees(r.fine)} added` : " · on time"}
+                {r.dueOn ? "to" : "from"} {r.member} ({r.memberCode})
+                {r.dueOn && ` · now due ${formatDate(r.dueOn)}`}
+                {r.fine > 0 ? ` · ${r.daysLate} day(s) late, fine ${rupees(r.fine)} added` : r.dueOn ? "" : " · on time"}
               </div>
             </Notice>
           ))}

@@ -114,27 +114,80 @@ export async function returnCopy({ barcode, userId, on = today() }: { barcode: s
   });
 }
 
-export async function renew({ loanId, userId, on = today() }: { loanId: number; userId: number; on?: string }) {
+/**
+ * Re-issue a book to the member who has it: the due date starts again from
+ * today. An overdue book is charged its late fine first, the same as a return.
+ * Re-issues count against the member type's renewal limit, which a librarian
+ * can override, as they can an expired membership.
+ */
+export async function reissue({
+  loanId,
+  barcode,
+  userId,
+  override = false,
+  on = today(),
+}: {
+  loanId?: number;
+  barcode?: string;
+  userId: number;
+  override?: boolean;
+  on?: string;
+}) {
   return db.transaction(async (tx) => {
     const [row] = await tx
-      .select({ loan: loans, type: memberTypes })
+      .select({ loan: loans, member: members, type: memberTypes, title: titles.title, barcode: copies.barcode })
       .from(loans)
+      .innerJoin(copies, eq(loans.copyId, copies.id))
+      .innerJoin(titles, eq(copies.titleId, titles.id))
       .innerJoin(members, eq(loans.memberId, members.id))
       .innerJoin(memberTypes, eq(members.typeId, memberTypes.id))
-      .where(eq(loans.id, loanId))
+      .where(and(loanId ? eq(loans.id, loanId) : sameCode(copies.barcode, (barcode ?? "").trim()), isNull(loans.returnedOn)))
       .for("update");
-    if (!row || row.loan.returnedOn) throw badRequest("This loan is not open");
-    if (row.loan.dueOn < on) throw badRequest("This item is overdue. Return it to settle the fine, then issue it again");
-    if (row.loan.renewCount >= row.type.renewLimit) {
-      throw badRequest(`Renewal limit reached (${row.type.renewLimit})`);
+    if (!row) throw badRequest(barcode ? `${barcode} is not on loan` : "This loan is not open");
+    const { loan, member, type } = row;
+    if (!member.active) throw badRequest(`${member.name} is not an active member`);
+    if (member.expiresOn && member.expiresOn < on && !override) {
+      throw new AppError(409, `${member.name}'s membership expired on ${member.expiresOn}`, true);
     }
-    const due = dueDate(on, row.type.loanDays, await loadClosures(tx));
+    if (loan.renewCount >= type.renewLimit && !override) {
+      throw new AppError(
+        409,
+        type.renewLimit === 0
+          ? `${type.name} members cannot re-issue books`
+          : `Already re-issued ${loan.renewCount} time(s); the limit is ${type.renewLimit}`,
+        true,
+      );
+    }
+
+    const closures = await loadClosures(tx);
+    const days = overdueDays(loan.dueOn, on, closures);
+    const fine = days * Number(type.finePerDay);
+    if (fine > 0) {
+      await tx.insert(fines).values({
+        memberId: member.id,
+        loanId: loan.id,
+        amount: fine.toFixed(2),
+        reason: `${days} day(s) late: ${row.title}`.slice(0, 600),
+        chargedOn: on,
+      });
+    }
+    const due = dueDate(on, type.loanDays, closures);
     await tx
       .update(loans)
       .set({ dueOn: due, renewCount: sql`${loans.renewCount} + 1` })
-      .where(eq(loans.id, loanId));
-    await audit(tx, userId, "loan.renew", { loanId, dueOn: due });
-    return { loanId, dueOn: due, renewCount: row.loan.renewCount + 1 };
+      .where(eq(loans.id, loan.id));
+    await audit(tx, userId, "loan.reissue", { loanId: loan.id, dueOn: due, daysLate: days, fine, override });
+    return {
+      loanId: loan.id,
+      barcode: row.barcode,
+      title: row.title,
+      member: member.name,
+      memberCode: member.code,
+      dueOn: due,
+      renewCount: loan.renewCount + 1,
+      daysLate: days,
+      fine,
+    };
   });
 }
 

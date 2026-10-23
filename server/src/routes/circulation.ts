@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { canOverride, requireRole } from "../auth.js";
-import { issue, renew, returnCopy } from "../circulation.js";
+import { issue, reissue, returnCopy } from "../circulation.js";
 import { AppError } from "../errors.js";
 
 export const circulationRouter = Router();
@@ -25,7 +25,19 @@ circulationRouter.post("/circulation/return", requireRole("assistant"), async (r
   res.json(await returnCopy({ barcode, userId: req.user!.id }));
 });
 
-circulationRouter.post("/circulation/renew", requireRole("assistant"), async (req, res) => {
-  const { loanId } = z.object({ loanId: z.number().int() }).parse(req.body);
-  res.json(await renew({ loanId, userId: req.user!.id }));
+const reissueInput = z
+  .object({
+    loanId: z.number().int().optional(),
+    barcode: z.string().trim().min(1).optional(),
+    override: z.boolean().default(false),
+  })
+  .refine((d) => d.loanId || d.barcode, "Scan the book's barcode");
+
+// "renew" is the older name for the same thing.
+circulationRouter.post(["/circulation/reissue", "/circulation/renew"], requireRole("assistant"), async (req, res) => {
+  const data = reissueInput.parse(req.body);
+  if (data.override && !canOverride(req.user)) {
+    throw new AppError(403, "Only a librarian can override re-issue limits");
+  }
+  res.json(await reissue({ ...data, userId: req.user!.id }));
 });
