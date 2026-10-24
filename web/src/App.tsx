@@ -12,6 +12,7 @@ import { MemberEditor, MemberList, MemberPage } from "./pages/members";
 import { Reports } from "./pages/reports";
 import { Settings } from "./pages/settings";
 import { VisitorCheckIn } from "./pages/visits";
+import logo from "./assets/himt-logo.png";
 
 export function useMe() {
   return useQuery({
@@ -53,9 +54,12 @@ function StaffLayout({ me, children }: { me: Me; children: ReactNode }) {
   return (
     <div className="min-h-screen md:flex">
       <aside className="bg-brand-900 text-brand-100 md:min-h-screen md:w-56 md:shrink-0">
-        <div className="px-5 py-4">
-          <div className="text-sm font-semibold text-white">HIMT College Library</div>
-          <div className="text-xs text-brand-100/70">Staff</div>
+        <div className="flex items-center gap-3 px-5 py-4 md:flex-col md:items-start">
+          <img src={logo} alt="HIMT" className="h-12 w-auto rounded-lg bg-white p-1.5 md:h-24 md:p-2" />
+          <div>
+            <div className="text-sm font-semibold text-white">HIMT College Library</div>
+            <div className="text-xs text-brand-100/70">Staff</div>
+          </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-3 md:flex-col md:overflow-visible">
           {nav
