@@ -23,6 +23,8 @@ export function Circulation({ me }: { me: Me }) {
   const [memberCode, setMemberCode] = useState<string | null>(null);
   const [barcode, setBarcode] = useState("");
   const [returnCode, setReturnCode] = useState("");
+  // What a scan in Quick return does: return the book, or re-issue it to the same member.
+  const [scanMode, setScanMode] = useState<"return" | "reissue">("return");
   const [issued, setIssued] = useState<string[]>([]);
   const [returned, setReturned] = useState<Returned[]>([]);
   const barcodeRef = useRef<HTMLInputElement>(null);
@@ -76,13 +78,24 @@ export function Circulation({ me }: { me: Me }) {
     mutationFn: (vars: ReissueVars) => api<Returned>("/circulation/reissue", { body: vars }),
     onSuccess: (r, vars) => {
       setReturned((x) => [r, ...x]);
-      if (vars.barcode) setReturnCode("");
+      if (vars.barcode) {
+        setReturnCode("");
+        returnRef.current?.focus();
+      }
       refresh();
     },
     onError: (_e, vars) => {
       if (vars.barcode) returnRef.current?.select();
     },
   });
+  const scanned = (code: string) => {
+    if (ret.isPending || reissue.isPending) return;
+    ret.reset();
+    reissue.reset();
+    if (scanMode === "return") ret.mutate(code);
+    else reissue.mutate({ barcode: code });
+  };
+
   const reissueErr = reissue.error instanceof ApiError ? reissue.error : null;
   const reissueVars = reissue.variables;
   const reissueProblem = reissueErr && (
@@ -235,42 +248,51 @@ export function Circulation({ me }: { me: Me }) {
         <section className="card space-y-4 lg:col-span-2">
           <h2>Quick return</h2>
           <p className="text-sm text-slate-500">
-            Scan a book to return it, or scan it and press Re-issue to lend it again to the same member. Late fines are added
+            Pick what a scan should do, then scan the book. Re-issue lends it again to the same member. Late fines are added
             automatically.
           </p>
+          <div className="inline-flex rounded-md border border-slate-300 p-0.5" role="radiogroup" aria-label="When a book is scanned">
+            {(["return", "reissue"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={scanMode === mode}
+                className={`rounded px-3 py-1 text-sm font-medium ${
+                  scanMode === mode ? "bg-brand-700 text-white" : "text-slate-600 hover:bg-slate-100"
+                }`}
+                onClick={() => {
+                  setScanMode(mode);
+                  ret.reset();
+                  reissue.reset();
+                  returnRef.current?.focus();
+                }}
+              >
+                {mode === "return" ? "Return" : "Re-issue"}
+              </button>
+            ))}
+          </div>
           <form
             className="flex gap-2"
             onSubmit={(e) => {
               e.preventDefault();
-              if (returnCode.trim()) ret.mutate(returnCode.trim());
+              if (returnCode.trim()) scanned(returnCode.trim());
             }}
           >
             <ScanInput
               ref={returnRef}
               className="input min-w-0 font-mono"
-              placeholder="Scan book barcode to return"
+              placeholder={scanMode === "return" ? "Scan book barcode to return" : "Scan book barcode to re-issue"}
               value={returnCode}
-              onScan={(code) => {
-                if (!ret.isPending) ret.mutate(code);
-              }}
+              onScan={scanned}
               onChange={(v) => {
                 setReturnCode(v);
                 ret.reset();
+                reissue.reset();
               }}
             />
-            <button className="btn-primary" disabled={ret.isPending || !returnCode.trim()}>
-              Return
-            </button>
-            <button
-              type="button"
-              className="btn-secondary whitespace-nowrap"
-              disabled={reissue.isPending || !returnCode.trim()}
-              onClick={() => {
-                ret.reset();
-                reissue.mutate({ barcode: returnCode.trim() });
-              }}
-            >
-              Re-issue
+            <button className="btn-primary whitespace-nowrap" disabled={ret.isPending || reissue.isPending || !returnCode.trim()}>
+              {scanMode === "return" ? "Return" : "Re-issue"}
             </button>
           </form>
           <ErrorNote error={ret.error} />
