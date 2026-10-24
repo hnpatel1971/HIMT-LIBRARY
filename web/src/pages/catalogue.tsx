@@ -66,7 +66,7 @@ export function CatalogueList({ me }: { me: Me }) {
                     </Link>
                     <div className="text-xs text-slate-500">{[t.publisher, t.year].filter(Boolean).join(", ")}</div>
                   </td>
-                  <td>{t.authors.join(", ")}</td>
+                  <td>{[...t.authors, t.corporateAuthor].filter(Boolean).join(", ")}</td>
                   <td>{t.callNumber}</td>
                   <td className="text-right">{t.copies}</td>
                   <td className="text-right">{t.available}</td>
@@ -230,7 +230,7 @@ export function TitlePage({ id, me }: { id: number; me: Me }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1>{t.title}</h1>
-            <p className="text-slate-700">{t.authors.join(", ")}</p>
+            <p className="text-slate-700">{[...t.authors, t.corporateAuthor].filter(Boolean).join(", ")}</p>
           </div>
           {lib && (
             <div className="flex gap-2">
@@ -249,6 +249,7 @@ export function TitlePage({ id, me }: { id: number; me: Me }) {
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
           {(
             [
+              ["Corporate author", t.corporateAuthor],
               ["Publisher", t.publisher],
               ["Place", t.place],
               ["Year", t.year],
@@ -357,6 +358,7 @@ export function TitleEditor({ id }: { id?: number }) {
   const [f, setF] = useState({
     title: "",
     authors: "",
+    corporateAuthor: "",
     subjects: "",
     publisher: "",
     place: "",
@@ -375,6 +377,7 @@ export function TitleEditor({ id }: { id?: number }) {
     setF({
       title: t.title,
       authors: t.authors.join("; "),
+      corporateAuthor: t.corporateAuthor ?? "",
       subjects: t.subjects.join("; "),
       publisher: t.publisher ?? "",
       place: t.place ?? "",
@@ -419,7 +422,10 @@ export function TitleEditor({ id }: { id?: number }) {
         <Field label="Authors" hint="Separate several with ;">
           <input className="input" value={f.authors} onChange={set("authors")} />
         </Field>
-        <Field label="Subjects" hint="Separate several with ;">
+        <Field label="Corporate author" hint="An organisation, e.g. IMO or DG Shipping">
+          <input className="input" value={f.corporateAuthor} onChange={set("corporateAuthor")} />
+        </Field>
+        <Field label="Subjects" hint="Separate several with ;" className="sm:col-span-2">
           <input className="input" value={f.subjects} onChange={set("subjects")} />
         </Field>
         <Field label="Publisher">

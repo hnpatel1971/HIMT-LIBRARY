@@ -49,6 +49,7 @@ export interface TitleRow {
   id: number;
   title: string;
   authors: string[];
+  corporateAuthor: string | null;
   publisher: string | null;
   year: string | null;
   callNumber: string | null;
@@ -78,6 +79,7 @@ export interface TitleDetail {
   id: number;
   title: string;
   authors: string[];
+  corporateAuthor: string | null;
   subjects: string[];
   publisher: string | null;
   place: string | null;

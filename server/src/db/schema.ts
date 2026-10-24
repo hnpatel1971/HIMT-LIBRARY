@@ -87,6 +87,8 @@ export const titles = pgTable(
     id: id(),
     title: varchar("title", { length: 500 }).notNull(),
     authors: jsonb("authors").$type<string[]>().notNull(),
+    // An organisation responsible for the work, e.g. IMO or DG Shipping.
+    corporateAuthor: varchar("corporate_author", { length: 255 }),
     subjects: jsonb("subjects").$type<string[]>().notNull(),
     publisher: varchar("publisher", { length: 255 }),
     place: varchar("place", { length: 128 }),

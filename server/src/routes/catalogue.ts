@@ -17,6 +17,7 @@ const list = z
 export const titleInput = z.object({
   title: z.string().trim().min(1, "Title is required"),
   authors: list,
+  corporateAuthor: opt,
   subjects: list,
   publisher: opt,
   place: opt,
@@ -49,6 +50,7 @@ export function titleSearch(q: string | undefined) {
   const like = `%${term}%`;
   return sql`(${titles.title} ILIKE ${like}
     OR ${titles.authors}::text ILIKE ${like}
+    OR ${titles.corporateAuthor} ILIKE ${like}
     OR ${titles.subjects}::text ILIKE ${like}
     OR ${titles.isbn} = ${term}
     OR ${titles.callNumber} ILIKE ${like}
@@ -62,6 +64,7 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
       id: titles.id,
       title: titles.title,
       authors: titles.authors,
+      corporateAuthor: titles.corporateAuthor,
       publisher: titles.publisher,
       year: titles.year,
       callNumber: titles.callNumber,

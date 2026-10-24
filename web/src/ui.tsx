@@ -14,9 +14,19 @@ export function formatDate(d: string | null | undefined) {
   });
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+export function Field({
+  label,
+  children,
+  hint,
+  className = "",
+}: {
+  label: string;
+  children: ReactNode;
+  hint?: string;
+  className?: string;
+}) {
   return (
-    <label className="block">
+    <label className={`block ${className}`}>
       <span className="label">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-xs text-slate-500">{hint}</span>}

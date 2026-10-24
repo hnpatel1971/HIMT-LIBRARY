@@ -131,13 +131,16 @@ for (const r of await q(`SELECT DISTINCT x.member_id FROM (
   warn(`member ${code} was deleted in SLiMS but has loans or fines; kept as an inactive placeholder`);
 }
 
-// Titles, with authors and subjects folded in.
+// Titles, with authors and subjects folded in. SLiMS marks organisations
+// as authority type "o"; the first one becomes the corporate author.
 const authors = new Map<string, string[]>();
+const corporate = new Map<string, string>();
 for (const r of await q(
-  "SELECT ba.biblio_id, a.author_name FROM biblio_author ba JOIN mst_author a ON a.author_id = ba.author_id ORDER BY ba.biblio_id, ba.level",
+  "SELECT ba.biblio_id, a.author_name, a.authority_type FROM biblio_author ba JOIN mst_author a ON a.author_id = ba.author_id ORDER BY ba.biblio_id, ba.level",
 )) {
   const k = String(r.biblio_id);
-  authors.set(k, [...(authors.get(k) ?? []), r.author_name.trim()]);
+  if (r.authority_type === "o" && !corporate.has(k)) corporate.set(k, r.author_name.trim());
+  else authors.set(k, [...(authors.get(k) ?? []), r.author_name.trim()]);
 }
 const subjects = new Map<string, string[]>();
 for (const r of await q(
@@ -158,6 +161,7 @@ for (const b of await q(`SELECT b.*, p.publisher_name, pl.place_name, l.language
     .values({
       title: String(b.title).trim().slice(0, 500),
       authors: authors.get(k) ?? [],
+      corporateAuthor: corporate.get(k) ?? null,
       subjects: subjects.get(k) ?? [],
       publisher: clean(b.publisher_name),
       place: clean(b.place_name),

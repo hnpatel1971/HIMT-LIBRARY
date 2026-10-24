@@ -71,7 +71,7 @@ export function OpacHome() {
                       {t.title}
                     </Link>
                     <div className="text-sm text-slate-600">
-                      {[t.authors.join(", "), t.publisher, t.year].filter(Boolean).join(" · ")}
+                      {[[...t.authors, t.corporateAuthor].filter(Boolean).join(", "), t.publisher, t.year].filter(Boolean).join(" · ")}
                     </div>
                     {t.callNumber && <div className="text-xs text-slate-500">Call number {t.callNumber}</div>}
                   </div>
@@ -114,6 +114,7 @@ export function OpacTitle({ id }: { id: number }) {
             <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
               {(
                 [
+                  ["Corporate author", t.corporateAuthor],
                   ["Publisher", [t.publisher, t.place].filter(Boolean).join(", ")],
                   ["Year", t.year],
                   ["Edition", t.edition],
