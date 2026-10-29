@@ -12,6 +12,7 @@ import { MemberEditor, MemberList, MemberPage } from "./pages/members";
 import { Reports } from "./pages/reports";
 import { Settings } from "./pages/settings";
 import { VisitorCheckIn } from "./pages/visits";
+import { BarcodeLabels } from "./pages/labels";
 // The PDF reader is large, so it loads only when someone opens an e-book.
 const Reader = lazy(() => import("./pages/reader").then((m) => ({ default: m.Reader })));
 import logo from "./assets/himt-logo.png";
@@ -37,6 +38,7 @@ const nav: { href: string; label: string; min?: "librarian" | "admin" }[] = [
   { href: "/staff", label: "Dashboard" },
   { href: "/staff/circulation", label: "Issue & return" },
   { href: "/staff/catalogue", label: "Catalogue" },
+  { href: "/staff/labels", label: "Barcode labels" },
   { href: "/staff/members", label: "Members" },
   { href: "/staff/reports", label: "Reports" },
   { href: "/staff/visits", label: "Visitor check-in" },
@@ -117,6 +119,9 @@ function Staff() {
         </Route>
         <Route path="/staff/catalogue/:id/edit">{(p) => <TitleEditor id={Number(p.id)} />}</Route>
         <Route path="/staff/catalogue/:id">{(p) => <TitlePage id={Number(p.id)} me={me} />}</Route>
+        <Route path="/staff/labels">
+          <BarcodeLabels />
+        </Route>
         <Route path="/staff/members">
           <MemberList />
         </Route>
