@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { api, ApiError, queryClient, type CopyInfo, type Lookup, type Me, type Paged, type TitleDetail, type TitleFile, type TitleRow } from "../api";
 import { isLibrarian } from "../App";
+import { addToLabelList } from "./labels";
 import { Empty, ErrorNote, Field, fileSize, formatDate, Loading, Pager, rupees, StatusBadge, useDebounced } from "../ui";
 
 export function useLookups() {
@@ -431,11 +432,24 @@ export function TitlePage({ id, me }: { id: number; me: Me }) {
       <div className="card space-y-3">
         <div className="flex items-center justify-between">
           <h2>Copies ({t.copies.length})</h2>
-          {lib && editing === null && (
-            <button className="btn-secondary" onClick={() => setEditing("new")}>
-              Add a copy
-            </button>
-          )}
+          <div className="flex gap-2">
+            {t.copies.length > 0 && (
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  addToLabelList(t.copies.map((c) => ({ id: c.id, barcode: c.barcode, title: t.title, callNumber: c.callNumber })));
+                  navigate("/staff/labels");
+                }}
+              >
+                Print barcode labels
+              </button>
+            )}
+            {lib && editing === null && (
+              <button className="btn-secondary" onClick={() => setEditing("new")}>
+                Add a copy
+              </button>
+            )}
+          </div>
         </div>
         {editing === "new" && <CopyForm titleId={id} onDone={() => setEditing(null)} />}
         <ErrorNote error={delCopy.error} />

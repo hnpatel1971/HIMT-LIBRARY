@@ -226,3 +226,47 @@ catalogueRouter.get("/next-barcode", requireRole("librarian"), async (req, res) 
   const n = row ? Number(row.barcode.slice(prefix.length, prefix.length + zeros.length)) + 1 : 1;
   res.json({ barcode: `${prefix}${String(n).padStart(zeros.length, "0")}${suffix}` });
 });
+
+/**
+ * Copies to print barcode labels for. Pick by title or barcode search, by a
+ * barcode range (e.g. HI01200MT to HI01299MT), by date added, or by id.
+ */
+catalogueRouter.get("/labels", requireRole("assistant"), async (req, res) => {
+  const str = (k: string) => (typeof req.query[k] === "string" ? (req.query[k] as string).trim() : "");
+  const q = str("q");
+  const from = str("from");
+  const to = str("to");
+  const since = str("since");
+  const ids = str("ids")
+    .split(",")
+    .map(Number)
+    .filter((n) => Number.isInteger(n) && n > 0);
+  if (since && !/^\d{4}-\d{2}-\d{2}$/.test(since)) throw badRequest("Date must be YYYY-MM-DD");
+  const where = [
+    q ? sql`(${titleSearch(q)} OR ${copies.barcode} ILIKE ${`%${q}%`})` : undefined,
+    from ? sql`upper(${copies.barcode}) >= upper(${from})` : undefined,
+    to ? sql`upper(${copies.barcode}) <= upper(${to})` : undefined,
+    // Range ends of the same length, so HI0120MT..HI0129MT does not pick up HI012MT.
+    from && to && from.length === to.length ? sql`length(${copies.barcode}) = ${from.length}` : undefined,
+    since ? sql`${copies.createdAt} >= (${since}::date AT TIME ZONE 'Asia/Kolkata')` : undefined,
+    ids.length ? sql`${copies.id} IN (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})` : undefined,
+  ].filter(Boolean);
+  if (!where.length) return res.json({ rows: [], more: false });
+  const limit = 1000;
+  const rows = await db
+    .select({
+      id: copies.id,
+      barcode: copies.barcode,
+      titleId: titles.id,
+      title: titles.title,
+      callNumber: sql<string | null>`coalesce(${copies.callNumber}, ${titles.callNumber})`,
+      status: copies.status,
+      createdAt: copies.createdAt,
+    })
+    .from(copies)
+    .innerJoin(titles, eq(copies.titleId, titles.id))
+    .where(and(...where))
+    .orderBy(since && !from && !to ? desc(copies.createdAt) : asc(copies.barcode), asc(copies.id))
+    .limit(limit + 1);
+  res.json({ rows: rows.slice(0, limit), more: rows.length > limit });
+});
