@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, Redirect, Route, Switch, useLocation } from "wouter";
 import { api, ApiError, queryClient, type Me } from "./api";
@@ -12,6 +12,8 @@ import { MemberEditor, MemberList, MemberPage } from "./pages/members";
 import { Reports } from "./pages/reports";
 import { Settings } from "./pages/settings";
 import { VisitorCheckIn } from "./pages/visits";
+// The PDF reader is large, so it loads only when someone opens an e-book.
+const Reader = lazy(() => import("./pages/reader").then((m) => ({ default: m.Reader })));
 import logo from "./assets/himt-logo.png";
 
 export function useMe() {
@@ -147,6 +149,13 @@ export function App() {
         <OpacHome />
       </Route>
       <Route path="/title/:id">{(p) => <OpacTitle id={Number(p.id)} />}</Route>
+      <Route path="/read/:id">
+        {(p) => (
+          <Suspense fallback={<Loading />}>
+            <Reader id={Number(p.id)} />
+          </Suspense>
+        )}
+      </Route>
       <Route path="/staff/login">
         <Login />
       </Route>

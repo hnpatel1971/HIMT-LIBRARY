@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { api, queryClient, type CopyInfo, type Lookup, type Me, type Paged, type TitleDetail, type TitleRow } from "../api";
+import { api, ApiError, queryClient, type CopyInfo, type Lookup, type Me, type Paged, type TitleDetail, type TitleFile, type TitleRow } from "../api";
 import { isLibrarian } from "../App";
-import { Empty, ErrorNote, Field, formatDate, Loading, Pager, rupees, StatusBadge, useDebounced } from "../ui";
+import { Empty, ErrorNote, Field, fileSize, formatDate, Loading, Pager, rupees, StatusBadge, useDebounced } from "../ui";
 
 export function useLookups() {
   const locations = useQuery({ queryKey: ["locations"], queryFn: () => api<Lookup[]>("/locations") }).data ?? [];
@@ -206,6 +206,161 @@ function CopyForm({ titleId, copy, onDone }: { titleId: number; copy?: CopyInfo;
   );
 }
 
+async function uploadFile(titleId: number, file: File) {
+  const res = await fetch(`/api/titles/${titleId}/files?name=${encodeURIComponent(file.name)}`, {
+    method: "POST",
+    headers: { "content-type": "application/pdf" },
+    body: file,
+    credentials: "same-origin",
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new ApiError(res.status, data.error ?? (res.status === 413 ? "The file is too big" : res.statusText));
+}
+
+function FileRow({ titleId, f, lib }: { titleId: number; f: TitleFile; lib: boolean }) {
+  const [edit, setEdit] = useState<{ name: string; access: "public" | "staff"; allowDownload: boolean } | null>(null);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["title", titleId] });
+  const save = useMutation({
+    mutationFn: () => api(`/files/${f.id}`, { method: "PUT", body: edit }),
+    onSuccess: () => {
+      setEdit(null);
+      refresh();
+    },
+  });
+  const del = useMutation({ mutationFn: () => api(`/files/${f.id}`, { method: "DELETE" }), onSuccess: refresh });
+  if (edit)
+    return (
+      <tr>
+        <td colSpan={5}>
+          <form
+            className="space-y-3 rounded-md border border-slate-200 bg-slate-50 p-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              save.mutate();
+            }}
+          >
+            <ErrorNote error={save.error} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Name shown to readers">
+                <input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} required />
+              </Field>
+              <Field label="Who can read it">
+                <select
+                  className="input"
+                  value={edit.access}
+                  onChange={(e) => setEdit({ ...edit, access: e.target.value as "public" | "staff" })}
+                >
+                  <option value="public">Anyone using the catalogue</option>
+                  <option value="staff">Library staff only</option>
+                </select>
+              </Field>
+              <label className="flex items-center gap-2 pt-6 text-sm">
+                <input type="checkbox" checked={edit.allowDownload} onChange={(e) => setEdit({ ...edit, allowDownload: e.target.checked })} />
+                Readers may download it
+              </label>
+            </div>
+            <div className="flex gap-2">
+              <button className="btn-primary" disabled={save.isPending}>
+                Save
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setEdit(null)}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        </td>
+      </tr>
+    );
+  return (
+    <tr>
+      <td>
+        <Link href={`/read/${f.id}`} className="font-medium text-brand-700 hover:underline">
+          {f.name}
+        </Link>
+        <div className="text-xs text-slate-500">PDF, {fileSize(f.size)}</div>
+        <ErrorNote error={del.error} />
+      </td>
+      <td>{f.access === "staff" ? "Staff only" : "Anyone"}</td>
+      <td>{f.allowDownload ? "Allowed" : "Read online only"}</td>
+      <td className="text-right">{f.opens}</td>
+      {lib && (
+        <td className="whitespace-nowrap text-right">
+          <button
+            className="text-sm text-brand-700 underline"
+            onClick={() => setEdit({ name: f.name, access: f.access ?? "public", allowDownload: f.allowDownload })}
+          >
+            Edit
+          </button>
+          <button className="ml-3 text-sm text-red-700 underline" onClick={() => confirm(`Remove ${f.name}?`) && del.mutate()}>
+            Remove
+          </button>
+        </td>
+      )}
+    </tr>
+  );
+}
+
+function TitleFiles({ titleId, files, lib }: { titleId: number; files: TitleFile[]; lib: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  const upload = useMutation({
+    mutationFn: async (list: File[]) => {
+      for (const file of list) await uploadFile(titleId, file);
+    },
+    onSettled: () => {
+      if (input.current) input.current.value = "";
+      queryClient.invalidateQueries({ queryKey: ["title", titleId] });
+    },
+  });
+  if (!lib && files.length === 0) return null;
+  return (
+    <div className="card space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2>E-book files ({files.length})</h2>
+        {lib && (
+          <label className="btn-secondary cursor-pointer">
+            {upload.isPending ? "Uploading…" : "Add a PDF"}
+            <input
+              ref={input}
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              className="hidden"
+              disabled={upload.isPending}
+              onChange={(e) => e.target.files?.length && upload.mutate([...e.target.files])}
+            />
+          </label>
+        )}
+      </div>
+      <ErrorNote error={upload.error} />
+      {files.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          Add a PDF to let readers open this title in their browser from the catalogue. New files can be read by anyone, online only. Use
+          Edit to change that.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>File</th>
+                <th>Who can read</th>
+                <th>Download</th>
+                <th className="text-right">Opened</th>
+                {lib && <th />}
+              </tr>
+            </thead>
+            <tbody>
+              {files.map((f) => (
+                <FileRow key={f.id} titleId={titleId} f={f} lib={lib} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TitlePage({ id, me }: { id: number; me: Me }) {
   const [, navigate] = useLocation();
   const [editing, setEditing] = useState<number | "new" | null>(null);
@@ -237,7 +392,7 @@ export function TitlePage({ id, me }: { id: number; me: Me }) {
               <Link href={`/staff/catalogue/${id}/edit`} className="btn-secondary">
                 Edit
               </Link>
-              {t.copies.length === 0 && (
+              {t.copies.length === 0 && t.files.length === 0 && (
                 <button className="btn-danger" onClick={() => confirm("Delete this title?") && del.mutate()}>
                   Delete
                 </button>
@@ -270,6 +425,8 @@ export function TitlePage({ id, me }: { id: number; me: Me }) {
         </dl>
         {t.notes && <p className="mt-3 text-sm text-slate-600">{t.notes}</p>}
       </div>
+
+      <TitleFiles titleId={id} files={t.files} lib={lib} />
 
       <div className="card space-y-3">
         <div className="flex items-center justify-between">

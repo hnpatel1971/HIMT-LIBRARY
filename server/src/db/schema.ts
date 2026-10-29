@@ -16,6 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["admin", "librarian", "assistant"]);
+export const fileAccessEnum = pgEnum("file_access", ["public", "staff"]);
 export const copyStatusEnum = pgEnum("copy_status", ["available", "repair", "no_loan", "missing", "withdrawn"]);
 
 const id = () => serial("id").primaryKey();
@@ -127,6 +128,28 @@ export const copies = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("copies_title_idx").on(t.titleId)],
+);
+
+// E-book files (PDF) attached to a title, read online through the catalogue.
+export const titleFiles = pgTable(
+  "title_files",
+  {
+    id: id(),
+    titleId: ref("title_id")
+      .notNull()
+      .references(() => titles.id),
+    name: varchar("name", { length: 255 }).notNull(),
+    // File name on disk, under FILES_DIR.
+    storedName: varchar("stored_name", { length: 64 }).notNull().unique(),
+    size: integer("size").notNull(),
+    // public: anyone using the catalogue; staff: only signed-in staff.
+    access: fileAccessEnum("access").notNull().default("public"),
+    allowDownload: boolean("allow_download").notNull().default(false),
+    opens: integer("opens").notNull().default(0),
+    uploadedBy: ref("uploaded_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("title_files_title_idx").on(t.titleId)],
 );
 
 export const loans = pgTable(

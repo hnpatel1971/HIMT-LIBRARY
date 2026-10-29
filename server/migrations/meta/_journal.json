@@ -15,6 +15,13 @@
       "when": 1792840181756,
       "tag": "0001_corporate_author",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1793274528860,
+      "tag": "0002_ebook_files",
+      "breakpoints": true
     }
   ]
 }

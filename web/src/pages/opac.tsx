@@ -2,7 +2,7 @@ import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { api, type Paged, type TitleDetail, type TitleRow } from "../api";
-import { Empty, ErrorNote, formatDate, Loading, Pager, StatusBadge, useDebounced } from "../ui";
+import { Empty, ErrorNote, fileSize, formatDate, Loading, Pager, StatusBadge, useDebounced } from "../ui";
 
 function useLibraryName() {
   return useQuery({ queryKey: ["opac-info"], queryFn: () => api<{ libraryName: string }>("/opac/info") }).data?.libraryName;
@@ -75,12 +75,13 @@ export function OpacHome() {
                     </div>
                     {t.callNumber && <div className="text-xs text-slate-500">Call number {t.callNumber}</div>}
                   </div>
-                  <div className="shrink-0 text-right text-sm">
+                  <div className="flex shrink-0 flex-col items-end gap-1 text-right text-sm">
+                    {t.ebooks > 0 && <span className="badge bg-brand-50 text-brand-700">Read online</span>}
                     {t.available > 0 ? (
                       <span className="badge bg-green-100 text-green-800">{t.available} available</span>
                     ) : t.copies > 0 ? (
                       <span className="badge bg-amber-100 text-amber-800">All on loan</span>
-                    ) : (
+                    ) : t.ebooks > 0 ? null : (
                       <span className="badge bg-slate-100 text-slate-600">No copies</span>
                     )}
                   </div>
@@ -132,6 +133,21 @@ export function OpacTitle({ id }: { id: number }) {
                   </div>
                 ))}
             </dl>
+            {t.files.length > 0 && (
+              <>
+                <h2 className="mt-6">Read online</h2>
+                <ul className="mt-2 space-y-2">
+                  {t.files.map((f) => (
+                    <li key={f.id} className="flex flex-wrap items-center gap-3">
+                      <Link href={`/read/${f.id}`} className="btn-primary">
+                        Read {f.name}
+                      </Link>
+                      <span className="text-sm text-slate-500">PDF, {fileSize(f.size)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             <h2 className="mt-6">Copies</h2>
             {t.copies.length === 0 ? (
               <Empty>The library has no copies of this title.</Empty>

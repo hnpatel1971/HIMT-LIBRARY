@@ -3,6 +3,9 @@ import { forwardRef, useEffect, useRef, useState, type InputHTMLAttributes, type
 export const rupees = (n: number | string | null | undefined) =>
   `₹${Number(n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 
+export const fileSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
 export function formatDate(d: string | null | undefined) {
   if (!d) return "";
   const [y, m, day] = d.slice(0, 10).split("-").map(Number);

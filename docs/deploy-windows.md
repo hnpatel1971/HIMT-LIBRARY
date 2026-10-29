@@ -55,6 +55,9 @@ service. Data and settings are kept.
 - Backups: the `library` database is in the same PostgreSQL as the LMS, so a
   backup of that PostgreSQL covers both. For a library-only backup:
   `pg_dump -U postgres -h 127.0.0.1 -d library -f library-backup.sql`.
+- E-book PDFs are files, not database rows. They are kept in
+  `C:\himt-library-files` (or `FILES_DIR` in the settings file), so back up
+  that folder together with the database.
 - HTTPS: bind a certificate to the himt-library site in IIS once it has a web
   address. Sign-in cookies switch to secure automatically over HTTPS.
 
