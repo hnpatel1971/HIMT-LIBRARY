@@ -33,6 +33,10 @@ pnpm build
   are counted the same way.
 - A member with overdue books, or an expired membership, can only borrow when
   a librarian or admin overrides it.
+- E-books: a title can carry PDF files. Readers open them in the browser from
+  the public catalogue. Each file is either for anyone or for staff only, and
+  download and print are off unless the librarian allows them. Files are
+  stored in `FILES_DIR` (default `../files`), up to 100 MB each.
 - Roles: assistant (issue, return, members), librarian (catalogue, overrides,
   fines), admin (rules, staff accounts).
 

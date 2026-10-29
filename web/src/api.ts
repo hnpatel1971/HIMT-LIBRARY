@@ -56,6 +56,7 @@ export interface TitleRow {
   isbn: string | null;
   copies: number;
   available: number;
+  ebooks: number;
 }
 export interface CopyInfo {
   id: number;
@@ -93,6 +94,25 @@ export interface TitleDetail {
   format: string | null;
   notes: string | null;
   copies: CopyInfo[];
+  files: TitleFile[];
+}
+/** An e-book file on a title. Staff see every field; the public catalogue only some. */
+export interface TitleFile {
+  id: number;
+  name: string;
+  size: number;
+  allowDownload: boolean;
+  access?: "public" | "staff";
+  opens?: number;
+  createdAt?: string;
+}
+export interface FileInfo {
+  id: number;
+  titleId: number;
+  title: string;
+  name: string;
+  size: number;
+  allowDownload: boolean;
 }
 export interface Lookup {
   id: number;

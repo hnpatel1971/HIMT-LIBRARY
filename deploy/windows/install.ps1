@@ -18,6 +18,8 @@ $ProgressPreference = "SilentlyContinue"
 
 $AppDir = "C:\himt-library"
 $ConfigDir = "C:\himt-library-config"
+# E-book PDFs uploaded in the app. Kept outside $AppDir so updates never touch them.
+$FilesDir = "C:\himt-library-files"
 $EnvFile = Join-Path $ConfigDir "himt-library.env"
 $DataFile = Join-Path $ConfigDir "library-data.sql"
 $LmsEnvFile = "C:\himt-lms-config\himt-lms.env"
@@ -236,6 +238,8 @@ Run nssm @("set", $ServiceName, "AppRotateFiles", "1")
 Run nssm @("set", $ServiceName, "AppRotateBytes", "10485760")
 Run nssm @("set", $ServiceName, "Start", "SERVICE_AUTO_START")
 $environment = @($config.GetEnumerator() | Where-Object { $_.Value -ne "" -and $_.Key -notin @("SITE_HOST", "SITE_PORT") } | ForEach-Object { "$($_.Key)=$($_.Value)" })
+if ($config["FILES_DIR"]) { $FilesDir = $config["FILES_DIR"] } else { $environment += "FILES_DIR=$FilesDir" }
+New-Item -ItemType Directory -Force $FilesDir | Out-Null
 $environment += "PATH=" + [Environment]::GetEnvironmentVariable("Path", "Machine")
 New-ItemProperty -Force -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName\Parameters" -Name AppEnvironmentExtra -PropertyType MultiString -Value $environment | Out-Null
 Restart-Service $ServiceName -ErrorAction SilentlyContinue

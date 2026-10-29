@@ -5,8 +5,9 @@ import { db, schema } from "../db/index.js";
 import { requireRole } from "../auth.js";
 import { audit } from "../audit.js";
 import { badRequest, notFound } from "../errors.js";
+import { filesForTitle } from "./files.js";
 
-const { titles, copies, loans, locations, collectionTypes, formats, members } = schema;
+const { titles, copies, loans, locations, collectionTypes, formats, members, titleFiles } = schema;
 
 const opt = z.string().trim().nullish().transform((v) => (v ? v : null));
 const list = z
@@ -72,6 +73,7 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
       copies: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id")`,
       available: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id" AND c.status = 'available'
         AND NOT EXISTS (SELECT 1 FROM loans l WHERE l.copy_id = c.id AND l.returned_on IS NULL))`,
+      ebooks: sql<number>`(SELECT count(*) FROM title_files f WHERE f.title_id = "titles"."id" AND f.access = 'public')`,
     })
     .from(titles)
     .where(where)
@@ -80,7 +82,7 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
     .offset((page - 1) * pageSize);
   const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(titles).where(where);
   return {
-    rows: rows.map((r) => ({ ...r, copies: Number(r.copies), available: Number(r.available) })),
+    rows: rows.map((r) => ({ ...r, copies: Number(r.copies), available: Number(r.available), ebooks: Number(r.ebooks) })),
     total: Number(total),
     page,
     pageSize,
@@ -114,6 +116,7 @@ export async function titleDetail(id: number, includeStaffFields: boolean) {
   return {
     ...t.title,
     format: t.format,
+    files: await filesForTitle(id, includeStaffFields),
     copies: copyRows.map((r) => ({
       id: r.copy.id,
       barcode: r.copy.barcode,
@@ -170,6 +173,8 @@ catalogueRouter.delete("/titles/:id", requireRole("librarian"), async (req, res)
   const id = Number(req.params.id);
   const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(copies).where(eq(copies.titleId, id));
   if (Number(n)) throw badRequest("Delete or move this title's copies first");
+  const [{ f }] = await db.select({ f: sql<number>`count(*)` }).from(titleFiles).where(eq(titleFiles.titleId, id));
+  if (Number(f)) throw badRequest("Remove this title's e-book files first");
   await db.delete(titles).where(eq(titles.id, id));
   await audit(db, req.user!.id, "title.delete", { id });
   res.status(204).end();
