@@ -2,9 +2,15 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { api, queryClient, type Me } from "../api";
-import { ErrorNote, Field } from "../ui";
+import { ErrorNote, Field, Notice } from "../ui";
+
+const ssoMessages: Record<string, string> = {
+  expired: "The sign-in link from the Employee Portal has expired or was already used. Please open the library from the portal again, or log in below.",
+  inactive: "Your library staff account is switched off. Please ask the library admin.",
+};
 
 export function Login() {
+  const ssoError = ssoMessages[new URLSearchParams(window.location.search).get("sso") ?? ""];
   const [, navigate] = useLocation();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -28,6 +34,7 @@ export function Login() {
           <h1>Library staff login</h1>
           <p className="text-sm text-slate-500">HIMT College Library</p>
         </div>
+        {ssoError && !login.error && <Notice tone="amber">{ssoError}</Notice>}
         <ErrorNote error={login.error} />
         <Field label="Username">
           <input className="input" autoFocus autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
