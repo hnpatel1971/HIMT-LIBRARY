@@ -5,7 +5,7 @@ import { api, queryClient, type Me } from "../api";
 import { ErrorNote, Field, Notice } from "../ui";
 
 const ssoMessages: Record<string, string> = {
-  expired: "The sign-in link from the Employee Portal has expired or was already used. Please open the library from the portal again, or log in below.",
+  expired: "The sign-in link from the Employee Portal has expired or was already used. Please open the library from the Employee Portal again. Library staff can also log in below.",
   inactive: "Your library staff account is switched off. Please ask the library admin.",
 };
 

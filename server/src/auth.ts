@@ -10,6 +10,8 @@ const rank: Record<Role, number> = { assistant: 1, librarian: 2, admin: 3 };
 declare module "express-session" {
   interface SessionData {
     userId: number;
+    /** Set when a library member (not staff) signed in through the Employee Portal. */
+    memberId: number;
   }
 }
 

@@ -266,6 +266,7 @@ interface StaffUser {
   id: number;
   username: string;
   name: string;
+  employeeId: string | null;
   role: Me["role"];
   active: boolean;
   lastLoginAt: string | null;
@@ -275,6 +276,7 @@ function UserForm({ user, onDone }: { user?: StaffUser; onDone: () => void }) {
   const [f, setF] = useState({
     username: user?.username ?? "",
     name: user?.name ?? "",
+    employeeId: user?.employeeId ?? "",
     role: user?.role ?? "assistant",
     active: user?.active ?? true,
     password: "",
@@ -303,6 +305,9 @@ function UserForm({ user, onDone }: { user?: StaffUser; onDone: () => void }) {
       </Field>
       <Field label="Full name">
         <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
+      </Field>
+      <Field label="Employee ID" hint="Lets this person sign in from the Employee Portal. Leave empty if they don't use it.">
+        <input className="input" value={f.employeeId} onChange={(e) => setF({ ...f, employeeId: e.target.value })} />
       </Field>
       <Field label="Role" hint="Assistant: issue/return and members. Librarian: also catalogue, fines, overrides. Admin: everything.">
         <select className="input" value={f.role} onChange={(e) => setF({ ...f, role: e.target.value as Me["role"] })}>
