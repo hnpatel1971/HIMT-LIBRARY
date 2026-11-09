@@ -16,7 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["admin", "librarian", "assistant"]);
-export const fileAccessEnum = pgEnum("file_access", ["public", "staff"]);
+export const fileAccessEnum = pgEnum("file_access", ["public", "staff", "issued"]);
 export const copyStatusEnum = pgEnum("copy_status", ["available", "repair", "no_loan", "missing", "withdrawn"]);
 
 const id = () => serial("id").primaryKey();
@@ -198,7 +198,8 @@ export const titleFiles = pgTable(
     // File name on disk, under FILES_DIR.
     storedName: varchar("stored_name", { length: 64 }).notNull().unique(),
     size: integer("size").notNull(),
-    // public: anyone using the catalogue; staff: only signed-in staff.
+    // public: anyone using the catalogue; staff: only signed-in staff;
+    // issued: staff, and members who have a copy of the title issued to them right now.
     access: fileAccessEnum("access").notNull().default("public"),
     allowDownload: boolean("allow_download").notNull().default(false),
     opens: integer("opens").notNull().default(0),

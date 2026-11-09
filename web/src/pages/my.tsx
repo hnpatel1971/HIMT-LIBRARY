@@ -3,7 +3,9 @@ import { Link, useLocation } from "wouter";
 import { api, ApiError, queryClient, type MemberDetail } from "../api";
 import { ErrorNote, formatDate, Loading, rupees } from "../ui";
 
-type Mine = Omit<MemberDetail, "notes" | "address">;
+type Mine = Omit<MemberDetail, "notes" | "address" | "current"> & {
+  current: (MemberDetail["current"][number] & { files: { id: number; name: string; size: number }[] })[];
+};
 
 /** "My library": what an employee who signed in from the Employee Portal sees. */
 export function MyLibrary() {
@@ -67,8 +69,11 @@ export function MyLibrary() {
 
             <div className="card">
               <h2>Books with you ({m.current.length})</h2>
+              {m.current.some((l) => l.files.length > 0) && (
+                <p className="mt-1 text-sm text-slate-500">E-books issued to you can be read here until they are returned.</p>
+              )}
               {m.current.length === 0 ? (
-                <p className="mt-2 text-sm text-slate-500">You have no books on loan.</p>
+                <p className="mt-2 text-sm text-slate-500">You have no books or e-books on loan.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="table mt-2">
@@ -86,6 +91,15 @@ export function MyLibrary() {
                             <Link href={`/title/${l.titleId}`} className="text-brand-700 underline">
                               {l.title}
                             </Link>
+                            {l.files.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {l.files.map((f) => (
+                                  <Link key={f.id} href={`/read/${f.id}`} className="btn-primary px-3 py-1 text-sm">
+                                    Read {l.files.length > 1 ? f.name : "online"}
+                                  </Link>
+                                ))}
+                              </div>
+                            )}
                           </td>
                           <td className="whitespace-nowrap">{formatDate(l.issuedOn)}</td>
                           <td className={`whitespace-nowrap ${l.overdue ? "font-medium text-red-700" : ""}`}>

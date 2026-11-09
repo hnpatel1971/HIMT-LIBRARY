@@ -175,6 +175,6 @@ opacRouter.get("/opac/titles", async (req, res) => {
   res.json(await listTitles(req.query.q as string | undefined, page, 20));
 });
 opacRouter.get("/opac/titles/:id", async (req, res) => {
-  const t = await titleDetail(Number(req.params.id), false);
+  const t = await titleDetail(Number(req.params.id), false, req.session?.memberId);
   res.json({ ...t, notes: undefined });
 });

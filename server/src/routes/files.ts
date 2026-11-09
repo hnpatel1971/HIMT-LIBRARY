@@ -2,14 +2,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import express, { Router, type Request } from "express";
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/index.js";
 import { requireRole } from "../auth.js";
 import { audit } from "../audit.js";
 import { AppError, badRequest, notFound } from "../errors.js";
 
-const { titleFiles, titles } = schema;
+const { titleFiles, titles, copies, loans, members } = schema;
 
 export const MAX_FILE_MB = 100;
 
@@ -31,28 +31,63 @@ const fileFields = {
   createdAt: titleFiles.createdAt,
 };
 
-/** Files for a title page. The public catalogue only sees public files. */
-export async function filesForTitle(titleId: number, includeStaffFiles: boolean) {
-  const rows = await db.select(fileFields).from(titleFiles).where(eq(titleFiles.titleId, titleId)).orderBy(asc(titleFiles.id));
-  return includeStaffFiles
-    ? rows
-    : rows.filter((f) => f.access === "public").map((f) => ({ id: f.id, name: f.name, size: f.size, allowDownload: f.allowDownload }));
+/**
+ * True when this member is active and has a copy of the title issued to them
+ * right now (not yet returned). Returning the book ends access.
+ */
+export async function memberHasIssued(memberId: number | undefined, titleId: number) {
+  if (!memberId) return false;
+  const [row] = await db
+    .select({ id: loans.id })
+    .from(loans)
+    .innerJoin(copies, eq(loans.copyId, copies.id))
+    .innerJoin(members, eq(loans.memberId, members.id))
+    .where(and(eq(loans.memberId, memberId), eq(copies.titleId, titleId), isNull(loans.returnedOn), eq(members.active, true)))
+    .limit(1);
+  return !!row;
 }
 
-/** A file the current visitor may read, or a 404 (never reveal staff-only files). */
+/**
+ * Files for a title page. Staff see everything. The public catalogue sees
+ * public files, and "issued" files with canRead telling the signed-in member
+ * (if any) whether they have it issued. Staff-only files stay hidden.
+ */
+export async function filesForTitle(titleId: number, includeStaffFiles: boolean, memberId?: number) {
+  const rows = await db.select(fileFields).from(titleFiles).where(eq(titleFiles.titleId, titleId)).orderBy(asc(titleFiles.id));
+  if (includeStaffFiles) return rows;
+  const visible = rows.filter((f) => f.access !== "staff");
+  const issued = visible.some((f) => f.access === "issued") && (await memberHasIssued(memberId, titleId));
+  return visible.map((f) => ({
+    id: f.id,
+    name: f.name,
+    size: f.size,
+    allowDownload: f.allowDownload,
+    issuedOnly: f.access === "issued",
+    canRead: f.access === "public" || issued,
+  }));
+}
+
+/** A file the current visitor may read, or an error (never reveal staff-only files). */
 async function readableFile(req: Request) {
   const [f] = await db
     .select({ ...fileFields, storedName: titleFiles.storedName, title: titles.title })
     .from(titleFiles)
     .innerJoin(titles, eq(titleFiles.titleId, titles.id))
     .where(eq(titleFiles.id, Number(req.params.id)));
-  if (!f || (f.access !== "public" && !req.user)) throw notFound("File");
+  if (!f || (f.access === "staff" && !req.user)) throw notFound("File");
+  if (f.access === "issued" && !req.user && !(await memberHasIssued(req.session?.memberId, f.titleId)))
+    throw new AppError(
+      403,
+      req.session?.memberId
+        ? "This e-book is not issued to you. Ask at the library counter to have it issued."
+        : "This e-book can be read only by members it is issued to. Open the library from the Employee Portal and go to My library.",
+    );
   return f;
 }
 
 const fileUpdate = z.object({
   name: z.string().trim().min(1, "Name is required").max(255),
-  access: z.enum(["public", "staff"]),
+  access: z.enum(["public", "staff", "issued"]),
   allowDownload: z.boolean(),
 });
 

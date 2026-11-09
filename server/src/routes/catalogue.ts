@@ -73,7 +73,7 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
       copies: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id")`,
       available: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id" AND c.status = 'available'
         AND NOT EXISTS (SELECT 1 FROM loans l WHERE l.copy_id = c.id AND l.returned_on IS NULL))`,
-      ebooks: sql<number>`(SELECT count(*) FROM title_files f WHERE f.title_id = "titles"."id" AND f.access = 'public')`,
+      ebooks: sql<number>`(SELECT count(*) FROM title_files f WHERE f.title_id = "titles"."id" AND f.access <> 'staff')`,
     })
     .from(titles)
     .where(where)
@@ -89,7 +89,7 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
   };
 }
 
-export async function titleDetail(id: number, includeStaffFields: boolean) {
+export async function titleDetail(id: number, includeStaffFields: boolean, memberId?: number) {
   const [t] = await db
     .select({ title: titles, format: formats.name })
     .from(titles)
@@ -116,7 +116,7 @@ export async function titleDetail(id: number, includeStaffFields: boolean) {
   return {
     ...t.title,
     format: t.format,
-    files: await filesForTitle(id, includeStaffFields),
+    files: await filesForTitle(id, includeStaffFields, memberId),
     copies: copyRows.map((r) => ({
       id: r.copy.id,
       barcode: r.copy.barcode,

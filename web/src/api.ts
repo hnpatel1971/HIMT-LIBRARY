@@ -97,12 +97,22 @@ export interface TitleDetail {
   files: TitleFile[];
 }
 /** An e-book file on a title. Staff see every field; the public catalogue only some. */
+export type FileAccess = "public" | "staff" | "issued";
+export const accessLabel: Record<FileAccess, string> = {
+  public: "Anyone",
+  issued: "Members it is issued to",
+  staff: "Staff only",
+};
 export interface TitleFile {
   id: number;
   name: string;
   size: number;
   allowDownload: boolean;
-  access?: "public" | "staff";
+  access?: FileAccess;
+  /** Public catalogue: true when only members who have it issued can read it. */
+  issuedOnly?: boolean;
+  /** Public catalogue: whether the current visitor can open it. */
+  canRead?: boolean;
   opens?: number;
   createdAt?: string;
 }

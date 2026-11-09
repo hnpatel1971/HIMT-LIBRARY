@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import express, { type Request } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "./db/index.js";
 import { audit } from "./audit.js";
@@ -152,8 +152,19 @@ ssoRouter.get("/my", async (req, res) => {
   if (!id) throw new AppError(401, "Not signed in");
   const m = await memberDetail(eq(schema.members.id, id));
   if (!m || !m.active) throw new AppError(401, "Not signed in");
-  const { notes: _notes, address: _address, ...mine } = m;
-  res.json({ ...mine, history: mine.history.slice(0, 50) });
+  const { notes: _notes, address: _address, phone: _phone, email: _email, ...mine } = m;
+  // E-books the member can read now: files on the titles they have issued
+  // (public or "issued" access; never staff-only files).
+  const titleIds = [...new Set(mine.current.map((l) => l.titleId))];
+  const files = titleIds.length
+    ? await db
+        .select({ id: schema.titleFiles.id, titleId: schema.titleFiles.titleId, name: schema.titleFiles.name, size: schema.titleFiles.size })
+        .from(schema.titleFiles)
+        .where(and(inArray(schema.titleFiles.titleId, titleIds), ne(schema.titleFiles.access, "staff")))
+        .orderBy(asc(schema.titleFiles.id))
+    : [];
+  const current = mine.current.map((l) => ({ ...l, files: files.filter((f) => f.titleId === l.titleId) }));
+  res.json({ ...mine, current, history: mine.history.slice(0, 50) });
 });
 
 /** For tests only. */

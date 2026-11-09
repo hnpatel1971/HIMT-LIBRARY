@@ -1,0 +1,1 @@
+ALTER TYPE "public"."file_access" ADD VALUE 'issued';
