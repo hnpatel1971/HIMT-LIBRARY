@@ -142,7 +142,12 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
         <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-4">
           {(
             [
-              ["Department", m.department],
+              ...(m.batch
+                ? ([
+                    ["Course", m.batch.course],
+                    ["Batch", m.batch.name],
+                  ] as const)
+                : ([["Department", m.department]] as const)),
               ["Phone", m.phone],
               ["Email", m.email],
               ["Address", m.address],
@@ -158,6 +163,11 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
             </div>
           ))}
         </dl>
+        {m.batch && (
+          <p className="mt-3 text-xs text-slate-500">
+            From the central HIMT server. The name, course, batch and expiry date are refreshed from there every night.
+          </p>
+        )}
         {m.notes && <p className="mt-3 text-sm text-slate-600">{m.notes}</p>}
       </div>
 

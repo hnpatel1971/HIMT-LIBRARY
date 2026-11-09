@@ -41,6 +41,9 @@ pnpm build
   chosen copies on A4, 15 per sheet by default (3 across, 64 x 50 mm), with
   the title above the barcode cut to 50 characters. Pick copies by title or
   barcode, by a barcode range, or by date added, or from a title's page.
+- Students come in from the central HIMT server every night: courses,
+  batches and students, matched by student ID = member ID. See
+  [docs/student-sync.md](docs/student-sync.md).
 - Roles: assistant (issue, return, members), librarian (catalogue, overrides,
   fines), admin (rules, staff accounts).
 

@@ -9,7 +9,7 @@ import { today } from "../calendar.js";
 import { badRequest, notFound } from "../errors.js";
 import { sameCode } from "../codes.js";
 
-const { members, memberTypes, loans, copies, titles, fines, payments } = schema;
+const { members, memberTypes, loans, copies, titles, fines, payments, batches, courses } = schema;
 
 const opt = z.string().trim().nullish().transform((v) => (v ? v : null));
 
@@ -68,6 +68,13 @@ export async function memberDetail(where: ReturnType<typeof eq>) {
     .innerJoin(memberTypes, eq(members.typeId, memberTypes.id))
     .where(where);
   if (!m) return null;
+  const [batch] = m.member.batchId
+    ? await db
+        .select({ id: batches.id, name: batches.name, startsOn: batches.startsOn, endsOn: batches.endsOn, course: courses.name })
+        .from(batches)
+        .innerJoin(courses, eq(batches.courseId, courses.id))
+        .where(eq(batches.id, m.member.batchId))
+    : [];
   const loanRows = await db
     .select({
       id: loans.id,
@@ -97,6 +104,7 @@ export async function memberDetail(where: ReturnType<typeof eq>) {
   return {
     ...m.member,
     type: m.type,
+    batch: batch ?? null,
     current: loanRows.filter((l) => !l.returnedOn).map((l) => ({ ...l, overdue: l.dueOn < on })),
     history: loanRows.filter((l) => l.returnedOn),
     fines: fineRows,

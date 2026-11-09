@@ -164,6 +164,9 @@ export interface MemberDetail {
   active: boolean;
   notes: string | null;
   type: MemberType;
+  /** Set for students brought in from the central HIMT server. */
+  batch: { id: string; name: string; startsOn: string | null; endsOn: string | null; course: string } | null;
+  syncedAt: string | null;
   current: LoanLine[];
   history: LoanLine[];
   fines: { id: number; amount: string; reason: string; chargedOn: string; waived: boolean }[];
