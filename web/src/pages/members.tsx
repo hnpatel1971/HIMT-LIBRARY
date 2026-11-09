@@ -145,7 +145,7 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
               ...(m.batch
                 ? ([
                     ["Course", m.batch.course],
-                    ["Batch", m.batch.name],
+                    ["Batch", `${m.batch.id} · ${m.batch.name}`],
                   ] as const)
                 : ([["Department", m.department]] as const)),
               ["Address", m.address],
@@ -326,6 +326,10 @@ export function MemberEditor({ id }: { id?: number }) {
     if (!f.typeId && types.length) setF((x) => ({ ...x, typeId: String(types.find((t) => /student/i.test(t.name))?.id ?? types[0].id) }));
   }, [types, f.typeId]);
   const [pickOpen, setPickOpen] = useState(false);
+  const [batchName, setBatchName] = useState("");
+  useEffect(() => {
+    if (existing.data?.batch) setBatchName(existing.data.batch.name);
+  }, [existing.data]);
   const [look, setLook] = useState<Lookup>({ state: "idle", code: "" });
   const fill = (p: Picked) => {
     const student = types.find((t) => /student/i.test(t.name));
@@ -339,6 +343,7 @@ export function MemberEditor({ id }: { id?: number }) {
       expiresOn: p.endsOn ?? "",
       batchId: p.batchId,
     }));
+    setBatchName(p.batchName ?? "");
   };
   const lookup = async (raw: string) => {
     const code = raw.trim();
@@ -402,6 +407,18 @@ export function MemberEditor({ id }: { id?: number }) {
         <Field label="Full name">
           <input className="input" value={f.name} onChange={set("name")} required />
         </Field>
+        <Field label="Department / course">
+          <input className="input" value={f.department} onChange={set("department")} />
+        </Field>
+        <Field label="Batch ID" hint={f.batchId ? batchName : "Set from the student's central record"}>
+          <input className="input font-mono" value={f.batchId} readOnly placeholder="—" />
+        </Field>
+        <Field label="Member since">
+          <input className="input" type="date" value={f.joinedOn} onChange={set("joinedOn")} />
+        </Field>
+        <Field label="Expires on" hint="Leave empty to use the member type's period">
+          <input className="input" type="date" value={f.expiresOn} onChange={set("expiresOn")} />
+        </Field>
         <Field label="Member type">
           <select className="input" value={f.typeId} onChange={set("typeId")}>
             {types.map((t) => (
@@ -410,15 +427,6 @@ export function MemberEditor({ id }: { id?: number }) {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Department / course">
-          <input className="input" value={f.department} onChange={set("department")} />
-        </Field>
-        <Field label="Member since">
-          <input className="input" type="date" value={f.joinedOn} onChange={set("joinedOn")} />
-        </Field>
-        <Field label="Expires on" hint="Leave empty to use the member type's period">
-          <input className="input" type="date" value={f.expiresOn} onChange={set("expiresOn")} />
         </Field>
       </div>
       <Field label="Address">
@@ -450,6 +458,7 @@ interface Picked {
   name: string;
   course: string;
   batchId: string;
+  batchName?: string;
   startsOn: string | null;
   endsOn: string | null;
 }
@@ -524,7 +533,7 @@ function StudentPicker({ onPick }: { onPick: (p: Picked) => void }) {
               const s = studentsQ.data?.find((x) => x.code === e.target.value);
               setCode(e.target.value);
               if (s && !s.memberId && course && batch) {
-                onPick({ code: s.code, name: s.name, course: course.name, batchId: batch.id, startsOn: batch.startsOn, endsOn: batch.endsOn });
+                onPick({ code: s.code, name: s.name, course: course.name, batchId: batch.id, batchName: batch.name, startsOn: batch.startsOn, endsOn: batch.endsOn });
               }
             }}
           >
