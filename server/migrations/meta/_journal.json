@@ -26,8 +26,15 @@
     {
       "idx": 3,
       "version": "7",
-      "when": 1793977123382,
-      "tag": "0003_sso_employee_id",
+      "when": 1794233019461,
+      "tag": "0003_student_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794233161167,
+      "tag": "0004_sso_employee_id",
       "breakpoints": true
     }
   ]

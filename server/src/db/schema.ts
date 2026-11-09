@@ -65,9 +65,63 @@ export const members = pgTable(
     expiresOn: day("expires_on"),
     active: boolean("active").notNull().default(true),
     notes: text("notes"),
+    // Set for students brought in from the central HIMT server.
+    batchId: varchar("batch_id", { length: 16 }).references(() => batches.id),
+    syncedAt: timestamp("synced_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("members_name_idx").on(t.name)],
+  (t) => [index("members_name_idx").on(t.name), index("members_batch_idx").on(t.batchId)],
+);
+
+// Courses whose students come from the central HIMT server. The list is fixed
+// (seeded by migration); code is exactly what the central API expects.
+export const courses = pgTable("courses", {
+  id: id(),
+  code: varchar("code", { length: 32 }).notNull().unique(),
+  name: varchar("name", { length: 64 }).notNull(),
+  active: boolean("active").notNull().default(true),
+});
+
+// Batches as the central server reports them; id is its Batch_Id, e.g. B48496.
+export const batches = pgTable(
+  "batches",
+  {
+    id: varchar("id", { length: 16 }).primaryKey(),
+    courseId: ref("course_id")
+      .notNull()
+      .references(() => courses.id),
+    name: varchar("name", { length: 200 }).notNull(),
+    startsOn: day("starts_on"),
+    endsOn: day("ends_on"),
+    preseaBatchId: varchar("presea_batch_id", { length: 64 }),
+    students: integer("students").notNull().default(0),
+    syncedAt: timestamp("synced_at", { withTimezone: true }),
+  },
+  (t) => [index("batches_course_idx").on(t.courseId)],
+);
+
+export const syncKindEnum = pgEnum("sync_kind", ["daily", "full"]);
+export const syncStatusEnum = pgEnum("sync_status", ["running", "ok", "partial", "failed"]);
+
+// One row per student sync run, shown in Settings > Student sync.
+export const syncRuns = pgTable(
+  "sync_runs",
+  {
+    id: id(),
+    kind: syncKindEnum("kind").notNull(),
+    status: syncStatusEnum("status").notNull().default("running"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    // Staff user who pressed Sync now; null for the nightly run.
+    startedBy: ref("started_by").references(() => users.id),
+    batches: integer("batches").notNull().default(0),
+    added: integer("added").notNull().default(0),
+    updated: integer("updated").notNull().default(0),
+    unchanged: integer("unchanged").notNull().default(0),
+    skipped: integer("skipped").notNull().default(0),
+    errors: jsonb("errors").$type<string[]>().notNull().default([]),
+  },
+  (t) => [index("sync_runs_started_idx").on(t.startedAt)],
 );
 
 // Simple lookup lists maintained by staff.
