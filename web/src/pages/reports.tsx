@@ -61,7 +61,6 @@ function Overdue() {
               data.map((l) => ({
                 member: l.member,
                 memberId: l.memberCode,
-                phone: l.phone,
                 barcode: l.barcode,
                 title: l.title,
                 due: l.dueOn,
@@ -77,7 +76,6 @@ function Overdue() {
         <thead>
           <tr>
             <th>Member</th>
-            <th>Phone</th>
             <th>Book</th>
             <th>Due</th>
             <th className="text-right">Days late</th>
@@ -92,7 +90,6 @@ function Overdue() {
                 </Link>
                 <div className="font-mono text-xs text-slate-500">{l.memberCode}</div>
               </td>
-              <td>{l.phone}</td>
               <td>
                 {l.title}
                 <div className="font-mono text-xs text-slate-500">{l.barcode}</div>
@@ -190,7 +187,7 @@ function Fines() {
   const { data } = useQuery({
     queryKey: ["fines-report"],
     queryFn: () =>
-      api<{ totalCharged: number; totalPaid: number; rows: { id: number; code: string; name: string; phone: string | null; charged: number; paid: number; balance: number }[] }>(
+      api<{ totalCharged: number; totalPaid: number; rows: { id: number; code: string; name: string; charged: number; paid: number; balance: number }[] }>(
         "/reports/fines",
       ),
   });
@@ -206,7 +203,6 @@ function Fines() {
           <thead>
             <tr>
               <th>Member</th>
-              <th>Phone</th>
               <th className="text-right">Charged</th>
               <th className="text-right">Paid</th>
               <th className="text-right">Owes</th>
@@ -221,7 +217,6 @@ function Fines() {
                   </Link>
                   <div className="font-mono text-xs text-slate-500">{r.code}</div>
                 </td>
-                <td>{r.phone}</td>
                 <td className="text-right">{rupees(r.charged)}</td>
                 <td className="text-right">{rupees(r.paid)}</td>
                 <td className="text-right font-medium text-red-700">{rupees(r.balance)}</td>
