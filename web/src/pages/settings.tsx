@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { api, queryClient, type Lookup, type Me, type MemberType } from "../api";
 import { ErrorNote, Field, formatDate, Loading, rupees } from "../ui";
+import { StudentSync } from "./student-sync";
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -11,6 +12,7 @@ export function Settings({ me }: { me: Me }) {
     ["rules", "Borrowing rules"],
     ["calendar", "Holidays"],
     ["lists", "Shelves & lists"],
+    ["students", "Student sync"],
     ...(admin ? [["users", "Staff users"] as const, ["log", "Activity log"] as const] : []),
   ] as const;
   const [tab, setTab] = useState<string>("rules");
@@ -37,6 +39,7 @@ export function Settings({ me }: { me: Me }) {
           <LookupList path="formats" title="Formats" />
         </div>
       )}
+      {tab === "students" && <StudentSync me={me} />}
       {tab === "users" && admin && <Users me={me} />}
       {tab === "log" && admin && <ActivityLog />}
     </div>
