@@ -134,6 +134,8 @@ export interface MemberRow {
   name: string;
   type: string;
   department: string | null;
+  batchId: string | null;
+  batchName: string | null;
   expiresOn: string | null;
   active: boolean;
   onLoan: number;

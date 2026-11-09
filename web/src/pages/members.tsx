@@ -27,7 +27,7 @@ export function MemberList() {
       </div>
       <input
         className="input"
-        placeholder="Search by name, member ID or department"
+        placeholder="Search by name, member ID, course or batch ID"
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
@@ -46,6 +46,8 @@ export function MemberList() {
               <tr>
                 <th>Name</th>
                 <th>ID</th>
+                <th>Department / course</th>
+                <th>Batch</th>
                 <th>Type</th>
                 <th>Expires</th>
                 <th className="text-right">On loan</th>
@@ -62,6 +64,15 @@ export function MemberList() {
                     {!m.active && <span className="ml-2 text-xs">(inactive)</span>}
                   </td>
                   <td className="font-mono">{m.code}</td>
+                  <td>{m.department}</td>
+                  <td>
+                    {m.batchId && (
+                      <>
+                        <span className="font-mono">{m.batchId}</span>
+                        {m.batchName && <div className="text-xs text-slate-500">{m.batchName}</div>}
+                      </>
+                    )}
+                  </td>
                   <td>{m.type}</td>
                   <td className="whitespace-nowrap">{formatDate(m.expiresOn)}</td>
                   <td className="text-right">{m.onLoan}</td>
@@ -330,6 +341,23 @@ export function MemberEditor({ id }: { id?: number }) {
   useEffect(() => {
     if (existing.data?.batch) setBatchName(existing.data.batch.name);
   }, [existing.data]);
+  // Editing a student: check the name against the central record for this ID.
+  const isStudent = !!existing.data && (!!existing.data.batchId || /student/i.test(existing.data.type.name));
+  const centralRec = useQuery({
+    queryKey: ["central", "student", existing.data?.code],
+    queryFn: () => api<Picked & { batchName: string }>(`/central/student/${encodeURIComponent(existing.data!.code)}`),
+    enabled: !!id && isStudent,
+    retry: false,
+  });
+  const [renamedFrom, setRenamedFrom] = useState<string | null>(null);
+  useEffect(() => {
+    const c = centralRec.data;
+    const m = existing.data;
+    if (!c || !m || c.name === m.name) return;
+    setF((x) => ({ ...x, name: c.name, department: c.course, batchId: c.batchId }));
+    setBatchName(c.batchName);
+    setRenamedFrom(m.name);
+  }, [centralRec.data, existing.data]);
   const [look, setLook] = useState<Lookup>({ state: "idle", code: "" });
   const fill = (p: Picked) => {
     const student = types.find((t) => /student/i.test(t.name));
@@ -406,6 +434,11 @@ export function MemberEditor({ id }: { id?: number }) {
         </Field>
         <Field label="Full name">
           <input className="input" value={f.name} onChange={set("name")} required />
+          {renamedFrom && (
+            <p className="mt-2 text-sm text-green-700">
+              Updated to the name in the central records for this ID (was "{renamedFrom}"). Save to keep it.
+            </p>
+          )}
         </Field>
         <Field label="Department / course">
           <input className="input" value={f.department} onChange={set("department")} />
