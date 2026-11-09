@@ -347,3 +347,88 @@ export function startSyncScheduler() {
   setTimeout(tick, 30_000);
   setInterval(tick, 10 * 60_000).unref();
 }
+
+// ---- Look up one student by ID, for the Add a member form ----------------
+
+export interface FoundStudent {
+  code: string;
+  name: string;
+  course: string;
+  batchId: string;
+  batchName: string;
+  startsOn: string | null;
+  endsOn: string | null;
+}
+
+/** Student lists per batch, kept briefly so typing several IDs in a row is quick. */
+const studentCache = new Map<string, { at: number; list: CentralStudent[] }>();
+const CACHE_MS = 10 * 60_000;
+
+async function cachedStudents(api: CentralApi, batchId: string) {
+  const hit = studentCache.get(batchId);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.list;
+  const list = await api.students(batchId);
+  studentCache.set(batchId, { at: Date.now(), list });
+  return list;
+}
+
+/**
+ * Finds a student on the central server by ID. The API can't search by ID, so
+ * this reads the batch lists, then the students of running and recent batches
+ * (newest first, a few at a time) until the ID turns up. Returns null if not found.
+ */
+export async function findCentralStudent(code: string, api: CentralApi = centralApi): Promise<FoundStudent | null> {
+  const want = tidy(code).toLowerCase();
+  if (!want) return null;
+  const courseRows = await db.select().from(courses).where(eq(courses.active, true));
+  const courseName = new Map(courseRows.map((c) => [c.id, c.name]));
+
+  // Fresh batch lists, so a batch that started today is included.
+  await Promise.all(
+    courseRows.map(async (c) => {
+      try {
+        await saveBatches(c.id, await api.batches(c.code));
+      } catch (e) {
+        console.error(`Batches for ${c.name}`, e);
+      }
+    }),
+  );
+  const cutoff = addDays(today(), -RECENT_DAYS);
+  const all = (await db.select().from(batches)).filter((b) => courseName.has(b.courseId));
+  const recent = all.filter((b) => !b.endsOn || b.endsOn >= cutoff);
+  const older = all.filter((b) => b.endsOn && b.endsOn < cutoff);
+  const newestFirst = (a: BatchRow, b: BatchRow) => (b.startsOn ?? "9999").localeCompare(a.startsOn ?? "9999");
+
+  let failures = 0;
+  for (const group of [recent.sort(newestFirst), older.sort(newestFirst)]) {
+    for (let i = 0; i < group.length; i += 6) {
+      const slice = group.slice(i, i + 6);
+      const lists = await Promise.all(
+        slice.map((b) =>
+          cachedStudents(api, b.id).catch((e) => {
+            failures++;
+            console.error(`Students of ${b.name}`, e);
+            return [] as CentralStudent[];
+          }),
+        ),
+      );
+      for (let k = 0; k < slice.length; k++) {
+        const s = lists[k].find((x) => tidy(String(x.Id ?? "")).toLowerCase() === want);
+        if (s) {
+          const b = slice[k];
+          return {
+            code: tidy(String(s.Id)),
+            name: tidy(s.Name).slice(0, 128),
+            course: courseName.get(b.courseId)!,
+            batchId: b.id,
+            batchName: b.name,
+            startsOn: b.startsOn,
+            endsOn: b.endsOn,
+          };
+        }
+      }
+    }
+  }
+  if (failures && failures === all.length) throw new Error("The central server did not answer");
+  return null;
+}

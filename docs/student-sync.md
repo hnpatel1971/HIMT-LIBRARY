@@ -5,13 +5,17 @@ don't type them in by hand.
 
 ## Adding a student
 
-Members > Add a member has a Course, Batch, Student picker at the top. It
-reads the central server live. Picking a student fills in member ID (central
-student ID), name, type STUDENT, department = course, member since = batch
-start and expires = batch end, and links the member to the batch. A student
-who is already a member (for example, added by the nightly sync) is marked "already a member" with a link to their
-page. Staff and visitors are still entered by hand. The form no longer has
-phone and email fields.
+On Members > Add a member, type the student's ID and press Enter (or Tab
+out of the field). The form fills in the name, type STUDENT, course, member
+since (batch start) and expiry (batch end) from the central server, and links
+the member to the batch. The central API can't search by ID, so the server
+reads the batch lists and then the students of running and recent batches
+(newest first, six at a time) until the ID turns up, then older batches.
+A found student takes about 1 to 5 seconds, and an unknown ID up to about 15.
+Student lists are cached for 10 minutes. An ID that is already a member shows
+a link to that member. If the ID isn't found, staff can fill the form by hand
+or pick from course and batch. Staff and visitors are entered by hand. The
+form has no phone or email fields.
 
 ## What it reads
 

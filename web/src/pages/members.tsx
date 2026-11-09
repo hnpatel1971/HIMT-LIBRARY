@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { api, queryClient, type Me, type MemberDetail, type MemberRow, type MemberType, type Paged } from "../api";
+import { api, ApiError, queryClient, type Me, type MemberDetail, type MemberRow, type MemberType, type Paged } from "../api";
 import { isLibrarian } from "../App";
 import { Empty, ErrorNote, Field, formatDate, Loading, Notice, Pager, rupees, useDebounced } from "../ui";
 
@@ -325,6 +325,37 @@ export function MemberEditor({ id }: { id?: number }) {
   useEffect(() => {
     if (!f.typeId && types.length) setF((x) => ({ ...x, typeId: String(types.find((t) => /student/i.test(t.name))?.id ?? types[0].id) }));
   }, [types, f.typeId]);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [look, setLook] = useState<Lookup>({ state: "idle", code: "" });
+  const fill = (p: Picked) => {
+    const student = types.find((t) => /student/i.test(t.name));
+    setF((x) => ({
+      ...x,
+      code: p.code,
+      name: p.name,
+      typeId: student ? String(student.id) : x.typeId,
+      department: p.course,
+      joinedOn: p.startsOn ?? x.joinedOn,
+      expiresOn: p.endsOn ?? "",
+      batchId: p.batchId,
+    }));
+  };
+  const lookup = async (raw: string) => {
+    const code = raw.trim();
+    if (!code || (code === look.code && look.state !== "error")) return;
+    setLook({ state: "busy", code });
+    try {
+      const r = await api<{ memberId?: number; name?: string; student?: Picked & { batchName: string } }>(`/central/lookup/${encodeURIComponent(code)}`);
+      if (r.memberId) {
+        setLook({ state: "member", code, memberId: r.memberId, name: r.name ?? "" });
+      } else if (r.student) {
+        fill(r.student);
+        setLook({ state: "found", code, batchName: r.student.batchName });
+      }
+    } catch (e) {
+      setLook(e instanceof ApiError && e.status === 404 ? { state: "none", code } : { state: "error", code, message: (e as Error).message });
+    }
+  };
   const save = useMutation({
     mutationFn: () =>
       api<{ id: number }>(id ? `/members/${id}` : "/members", { method: id ? "PUT" : "POST", body: { ...f, typeId: Number(f.typeId), batchId: f.batchId || undefined } }),
@@ -345,27 +376,28 @@ export function MemberEditor({ id }: { id?: number }) {
       }}
     >
       <h1>{id ? "Edit member" : "Add a member"}</h1>
-      {!id && (
-        <StudentPicker
-          onPick={(p) => {
-            const student = types.find((t) => /student/i.test(t.name));
-            setF((x) => ({
-              ...x,
-              code: p.code,
-              name: p.name,
-              typeId: student ? String(student.id) : x.typeId,
-              department: p.course,
-              joinedOn: p.startsOn ?? x.joinedOn,
-              expiresOn: p.endsOn ?? "",
-              batchId: p.batchId,
-            }));
-          }}
-        />
-      )}
+      {!id && pickOpen && <StudentPicker onPick={fill} />}
       <ErrorNote error={save.error} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Member ID" hint="Usually the college ID or roll number">
-          <input className="input font-mono" value={f.code} onChange={set("code")} required autoFocus={!id} />
+        <Field
+          label="Member ID"
+          hint={id ? "Usually the college ID or roll number" : "For a student, type the ID and press Enter. The rest fills in from the central HIMT records"}
+        >
+          <input
+            className="input font-mono"
+            value={f.code}
+            onChange={set("code")}
+            onBlur={() => !id && lookup(f.code)}
+            onKeyDown={(e) => {
+              if (!id && e.key === "Enter") {
+                e.preventDefault();
+                lookup(f.code);
+              }
+            }}
+            required
+            autoFocus={!id}
+          />
+          {!id && <LookupNote state={look} onPick={() => setPickOpen(true)} />}
         </Field>
         <Field label="Full name">
           <input className="input" value={f.name} onChange={set("name")} required />
@@ -517,4 +549,48 @@ function StudentPicker({ onPick }: { onPick: (p: Picked) => void }) {
       )}
     </div>
   );
+}
+
+type Lookup =
+  | { state: "idle" | "busy" | "none"; code: string }
+  | { state: "found"; code: string; batchName: string }
+  | { state: "member"; code: string; memberId: number; name: string }
+  | { state: "error"; code: string; message: string };
+
+function LookupNote({ state, onPick }: { state: Lookup; onPick: () => void }) {
+  const pick = (
+    <button type="button" className="underline" onClick={onPick}>
+      pick from course and batch
+    </button>
+  );
+  const box = "mt-2 text-sm";
+  switch (state.state) {
+    case "busy":
+      return <p className={`${box} text-slate-600`}>Looking up {state.code} in the central HIMT records…</p>;
+    case "found":
+      return <p className={`${box} text-green-700`}>Filled in from the central records ({state.batchName}). Check and save.</p>;
+    case "member":
+      return (
+        <p className={`${box} text-amber-700`}>
+          {state.name} already has this member ID.{" "}
+          <Link href={`/staff/members/${state.memberId}`} className="underline">
+            Open their page
+          </Link>
+        </p>
+      );
+    case "none":
+      return (
+        <p className={`${box} text-amber-700`}>
+          No student with this ID in the central records. Fill the form by hand, or {pick}.
+        </p>
+      );
+    case "error":
+      return (
+        <p className={`${box} text-red-700`}>
+          {state.message} You can also {pick}.
+        </p>
+      );
+    default:
+      return null;
+  }
 }
