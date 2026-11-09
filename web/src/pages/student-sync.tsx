@@ -15,6 +15,7 @@ interface SyncStatus {
     finishedAt: string | null;
     startedBy: string | null;
     batches: number;
+    added: number;
     updated: number;
     unchanged: number;
     skipped: number;
@@ -57,19 +58,19 @@ export function StudentSync({ me }: { me: Me }) {
     <div className="space-y-4">
       <div className="card space-y-3">
         <p className="text-sm text-slate-600">
-          Students join the library through Members &gt; Add a member, which fills itself from the central HIMT records. Every night at{" "}
-          {hourLabel(data.syncHour)} the batch lists are refreshed and students who are already members get their name, course, batch
-          and expiry date updated (all batches on Sundays, otherwise those running or ended in the last 60 days). No one is added or
-          deleted by the sync.
+          Every night at {hourLabel(data.syncHour)} students are brought in from the central HIMT server: new students become members,
+          and existing ones get their name, course, batch and expiry date updated. Each night covers batches that are running or ended in
+          the last 60 days; on Sundays every batch is read. A student's membership runs until their batch ends, and no one is ever
+          deleted. Members &gt; Add a member also fills itself from the central records.
         </p>
         {data.running ? (
           <Notice tone="blue">A sync is running. This page updates by itself.</Notice>
         ) : last ? (
           <p className="text-sm">
-            Last sync: <b>{when(last.finishedAt ?? last.startedAt)}</b>, {STATUS[last.status].toLowerCase()}. {last.updated} members updated.
+            Last sync: <b>{when(last.finishedAt ?? last.startedAt)}</b>, {STATUS[last.status].toLowerCase()}. {last.added} added, {last.updated} updated.
           </p>
         ) : (
-          <p className="text-sm">No sync has run yet.</p>
+          <p className="text-sm">No sync has run yet. The first one reads every batch.</p>
         )}
         {canRun && (
           <div className="flex flex-wrap gap-2">
@@ -128,6 +129,7 @@ export function StudentSync({ me }: { me: Me }) {
                 <th>By</th>
                 <th>Result</th>
                 <th className="text-right">Batches</th>
+                <th className="text-right">Added</th>
                 <th className="text-right">Updated</th>
                 <th className="text-right">Unchanged</th>
                 <th className="text-right">Skipped</th>
@@ -149,13 +151,14 @@ export function StudentSync({ me }: { me: Me }) {
                       )}
                     </td>
                     <td className="text-right">{r.batches}</td>
+                    <td className="text-right">{r.added}</td>
                     <td className="text-right">{r.updated}</td>
                     <td className="text-right">{r.unchanged}</td>
                     <td className="text-right">{r.skipped}</td>
                   </tr>
                   {open === r.id && (
                     <tr>
-                      <td colSpan={8}>
+                      <td colSpan={9}>
                         <ul className="list-disc space-y-1 pl-5 text-xs text-slate-600">
                           {r.errors.map((e, i) => (
                             <li key={i} className="break-all">

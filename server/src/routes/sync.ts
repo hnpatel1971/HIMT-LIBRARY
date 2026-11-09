@@ -33,6 +33,7 @@ syncRouter.get("/student-sync", requireRole("assistant"), async (_req, res) => {
       finishedAt: syncRuns.finishedAt,
       startedBy: users.name,
       batches: syncRuns.batches,
+      added: syncRuns.added,
       updated: syncRuns.updated,
       unchanged: syncRuns.unchanged,
       skipped: syncRuns.skipped,

@@ -9,7 +9,7 @@ Members > Add a member has a Course, Batch, Student picker at the top. It
 reads the central server live. Picking a student fills in member ID (central
 student ID), name, type STUDENT, department = course, member since = batch
 start and expires = batch end, and links the member to the batch. A student
-who is already a member is marked "already a member" with a link to their
+who is already a member (for example, added by the nightly sync) is marked "already a member" with a link to their
 page. Staff and visitors are still entered by hand. The form no longer has
 phone and email fields.
 
@@ -27,7 +27,9 @@ phone and email fields.
 
 ## What the nightly sync does to members
 
-- It never adds members. Students join through the form above.
+- The central student ID is the member ID. A new ID becomes a STUDENT member
+  with department = course, linked to the batch, member since = batch start,
+  expires = batch end.
 - An existing student member with that ID gets the central name, course,
   batch and expiry date. Staff edits to those fields are overwritten on the
   next run; phone, email, address and notes are left alone.

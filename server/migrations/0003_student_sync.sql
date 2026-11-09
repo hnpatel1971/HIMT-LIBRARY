@@ -27,6 +27,7 @@ CREATE TABLE "sync_runs" (
 	"finished_at" timestamp with time zone,
 	"started_by" integer,
 	"batches" integer DEFAULT 0 NOT NULL,
+	"added" integer DEFAULT 0 NOT NULL,
 	"updated" integer DEFAULT 0 NOT NULL,
 	"unchanged" integer DEFAULT 0 NOT NULL,
 	"skipped" integer DEFAULT 0 NOT NULL,

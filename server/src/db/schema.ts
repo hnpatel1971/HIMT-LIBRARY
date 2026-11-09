@@ -113,6 +113,7 @@ export const syncRuns = pgTable(
     // Staff user who pressed Sync now; null for the nightly run.
     startedBy: ref("started_by").references(() => users.id),
     batches: integer("batches").notNull().default(0),
+    added: integer("added").notNull().default(0),
     updated: integer("updated").notNull().default(0),
     unchanged: integer("unchanged").notNull().default(0),
     skipped: integer("skipped").notNull().default(0),
