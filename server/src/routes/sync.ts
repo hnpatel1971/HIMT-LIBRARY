@@ -156,3 +156,11 @@ syncRouter.get("/central/lookup/:code", requireRole("assistant"), async (req, re
   if (!student) throw new AppError(404, `No student with ID ${code} in the central HIMT records`);
   res.json({ student });
 });
+
+/** The central record for one ID, whether or not they are a member yet. */
+syncRouter.get("/central/student/:code", requireRole("assistant"), async (req, res) => {
+  const code = tidy(String(req.params.code));
+  const student = await central("lookup", () => findCentralStudent(code));
+  if (!student) throw new AppError(404, `No student with ID ${code} in the central HIMT records`);
+  res.json(student);
+});
