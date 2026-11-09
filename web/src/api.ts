@@ -164,6 +164,7 @@ export interface MemberDetail {
   active: boolean;
   notes: string | null;
   type: MemberType;
+  batchId: string | null;
   /** Set for students brought in from the central HIMT server. */
   batch: { id: string; name: string; startsOn: string | null; endsOn: string | null; course: string } | null;
   syncedAt: string | null;

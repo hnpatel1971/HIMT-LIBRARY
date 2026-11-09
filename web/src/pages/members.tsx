@@ -3,7 +3,7 @@ import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { api, queryClient, type Me, type MemberDetail, type MemberRow, type MemberType, type Paged } from "../api";
 import { isLibrarian } from "../App";
-import { Empty, ErrorNote, Field, formatDate, Loading, Pager, rupees, useDebounced } from "../ui";
+import { Empty, ErrorNote, Field, formatDate, Loading, Notice, Pager, rupees, useDebounced } from "../ui";
 
 export const useMemberTypes = () =>
   useQuery({ queryKey: ["member-types"], queryFn: () => api<MemberType[]>("/member-types") }).data ?? [];
@@ -148,8 +148,6 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
                     ["Batch", m.batch.name],
                   ] as const)
                 : ([["Department", m.department]] as const)),
-              ["Phone", m.phone],
-              ["Email", m.email],
               ["Address", m.address],
               ["Member since", formatDate(m.joinedOn)],
               ["Expires", formatDate(m.expiresOn)],
@@ -304,6 +302,7 @@ export function MemberEditor({ id }: { id?: number }) {
     expiresOn: "",
     active: true,
     notes: "",
+    batchId: "",
   });
   useEffect(() => {
     const m = existing.data;
@@ -320,6 +319,7 @@ export function MemberEditor({ id }: { id?: number }) {
       expiresOn: m.expiresOn ?? "",
       active: m.active,
       notes: m.notes ?? "",
+      batchId: m.batchId ?? "",
     });
   }, [existing.data]);
   useEffect(() => {
@@ -327,7 +327,7 @@ export function MemberEditor({ id }: { id?: number }) {
   }, [types, f.typeId]);
   const save = useMutation({
     mutationFn: () =>
-      api<{ id: number }>(id ? `/members/${id}` : "/members", { method: id ? "PUT" : "POST", body: { ...f, typeId: Number(f.typeId) } }),
+      api<{ id: number }>(id ? `/members/${id}` : "/members", { method: id ? "PUT" : "POST", body: { ...f, typeId: Number(f.typeId), batchId: f.batchId || undefined } }),
     onSuccess: (r) => {
       queryClient.invalidateQueries({ queryKey: ["member", r.id] });
       queryClient.invalidateQueries({ queryKey: ["members"] });
@@ -345,6 +345,23 @@ export function MemberEditor({ id }: { id?: number }) {
       }}
     >
       <h1>{id ? "Edit member" : "Add a member"}</h1>
+      {!id && (
+        <StudentPicker
+          onPick={(p) => {
+            const student = types.find((t) => /student/i.test(t.name));
+            setF((x) => ({
+              ...x,
+              code: p.code,
+              name: p.name,
+              typeId: student ? String(student.id) : x.typeId,
+              department: p.course,
+              joinedOn: p.startsOn ?? x.joinedOn,
+              expiresOn: p.endsOn ?? "",
+              batchId: p.batchId,
+            }));
+          }}
+        />
+      )}
       <ErrorNote error={save.error} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Member ID" hint="Usually the college ID or roll number">
@@ -364,12 +381,6 @@ export function MemberEditor({ id }: { id?: number }) {
         </Field>
         <Field label="Department / course">
           <input className="input" value={f.department} onChange={set("department")} />
-        </Field>
-        <Field label="Phone">
-          <input className="input" value={f.phone} onChange={set("phone")} />
-        </Field>
-        <Field label="Email">
-          <input className="input" type="email" value={f.email} onChange={set("email")} />
         </Field>
         <Field label="Member since">
           <input className="input" type="date" value={f.joinedOn} onChange={set("joinedOn")} />
@@ -399,5 +410,111 @@ export function MemberEditor({ id }: { id?: number }) {
         </button>
       </div>
     </form>
+  );
+}
+
+interface Picked {
+  code: string;
+  name: string;
+  course: string;
+  batchId: string;
+  startsOn: string | null;
+  endsOn: string | null;
+}
+
+/** Course, batch and student from the central HIMT server; picking a student fills the form. */
+function StudentPicker({ onPick }: { onPick: (p: Picked) => void }) {
+  const [courseId, setCourseId] = useState("");
+  const [batchId, setBatchId] = useState("");
+  const [code, setCode] = useState("");
+  const coursesQ = useQuery({ queryKey: ["central", "courses"], queryFn: () => api<{ id: number; name: string }[]>("/central/courses") });
+  const batchesQ = useQuery({
+    queryKey: ["central", "batches", courseId],
+    queryFn: () => api<{ id: string; name: string; startsOn: string | null; endsOn: string | null }[]>(`/central/courses/${courseId}/batches`),
+    enabled: !!courseId,
+  });
+  const studentsQ = useQuery({
+    queryKey: ["central", "students", batchId],
+    queryFn: () => api<{ code: string; name: string; memberId: number | null }[]>(`/central/batches/${batchId}/students`),
+    enabled: !!batchId,
+  });
+  const course = coursesQ.data?.find((c) => String(c.id) === courseId);
+  const batch = batchesQ.data?.find((b) => b.id === batchId);
+  const student = studentsQ.data?.find((s) => s.code === code);
+  return (
+    <div className="space-y-3 rounded-lg border border-brand-100 bg-brand-50/50 p-4">
+      <p className="text-sm text-slate-700">
+        Pick the student from the central HIMT records to fill in the form. For staff and visitors, fill the form by hand.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Course">
+          <select
+            className="input"
+            value={courseId}
+            onChange={(e) => {
+              setCourseId(e.target.value);
+              setBatchId("");
+              setCode("");
+            }}
+          >
+            <option value="">Choose…</option>
+            {coursesQ.data?.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Batch">
+          <select
+            className="input"
+            value={batchId}
+            disabled={!courseId || batchesQ.isLoading}
+            onChange={(e) => {
+              setBatchId(e.target.value);
+              setCode("");
+            }}
+          >
+            <option value="">{batchesQ.isLoading ? "Loading…" : "Choose…"}</option>
+            {batchesQ.data?.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Student">
+          <select
+            className="input"
+            value={code}
+            disabled={!batchId || studentsQ.isLoading}
+            onChange={(e) => {
+              const s = studentsQ.data?.find((x) => x.code === e.target.value);
+              setCode(e.target.value);
+              if (s && !s.memberId && course && batch) {
+                onPick({ code: s.code, name: s.name, course: course.name, batchId: batch.id, startsOn: batch.startsOn, endsOn: batch.endsOn });
+              }
+            }}
+          >
+            <option value="">{studentsQ.isLoading ? "Loading…" : studentsQ.data ? `Choose… (${studentsQ.data.length})` : "Choose…"}</option>
+            {studentsQ.data?.map((s) => (
+              <option key={s.code} value={s.code}>
+                {s.name} · {s.code}
+                {s.memberId ? " (already a member)" : ""}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+      <ErrorNote error={coursesQ.error ?? batchesQ.error ?? studentsQ.error} />
+      {student?.memberId && (
+        <Notice tone="amber">
+          {student.name} is already a member.{" "}
+          <Link href={`/staff/members/${student.memberId}`} className="underline">
+            Open their page
+          </Link>
+        </Notice>
+      )}
+    </div>
   );
 }

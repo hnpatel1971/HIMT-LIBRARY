@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/index.js";
 import { requireRole } from "../auth.js";
 import { audit } from "../audit.js";
 import { AppError } from "../errors.js";
-import { isSyncRunning, startSync, SYNC_HOUR } from "../studentSync.js";
+import { centralApi, isSyncRunning, saveBatches, startSync, SYNC_HOUR, tidy } from "../studentSync.js";
 
 const { courses, batches, members, syncRuns, users } = schema;
 
@@ -33,7 +33,6 @@ syncRouter.get("/student-sync", requireRole("assistant"), async (_req, res) => {
       finishedAt: syncRuns.finishedAt,
       startedBy: users.name,
       batches: syncRuns.batches,
-      added: syncRuns.added,
       updated: syncRuns.updated,
       unchanged: syncRuns.unchanged,
       skipped: syncRuns.skipped,
@@ -87,5 +86,52 @@ syncRouter.get("/student-sync/batches/:id/members", requireRole("assistant"), as
       .from(members)
       .where(eq(members.batchId, String(req.params.id)))
       .orderBy(asc(members.name)),
+  );
+});
+
+// Live lookups for the Add a member form: pick course, batch, then student.
+
+const central = async <T>(what: string, f: () => Promise<T>) => {
+  try {
+    return await f();
+  } catch (e) {
+    console.error(`Central server (${what})`, e);
+    throw new AppError(502, "The central HIMT server did not answer. Try again, or fill the form by hand");
+  }
+};
+
+syncRouter.get("/central/courses", requireRole("assistant"), async (_req, res) => {
+  res.json(await db.select({ id: courses.id, name: courses.name }).from(courses).where(eq(courses.active, true)).orderBy(asc(courses.id)));
+});
+
+syncRouter.get("/central/courses/:id/batches", requireRole("assistant"), async (req, res) => {
+  const [c] = await db.select().from(courses).where(eq(courses.id, Number(req.params.id)));
+  if (!c) throw new AppError(404, "Course not found");
+  const rows = await saveBatches(c.id, await central("batches", () => centralApi.batches(c.code)));
+  rows.sort((a, b) => (b.startsOn ?? "").localeCompare(a.startsOn ?? "") || a.name.localeCompare(b.name));
+  res.json(rows.map(({ id, name, startsOn, endsOn }) => ({ id, name, startsOn, endsOn })));
+});
+
+syncRouter.get("/central/batches/:id/students", requireRole("assistant"), async (req, res) => {
+  const batchId = String(req.params.id);
+  const list = await central("students", () => centralApi.students(batchId));
+  const students = new Map<string, string>();
+  for (const s of list) {
+    const code = tidy(String(s.Id ?? ""));
+    const name = tidy(s.Name);
+    if (code && name) students.set(code, name);
+  }
+  const codes = [...students.keys()];
+  const existing = codes.length
+    ? await db
+        .select({ id: members.id, code: members.code })
+        .from(members)
+        .where(inArray(sql`lower(${members.code})`, codes.map((c) => c.toLowerCase())))
+    : [];
+  const memberOf = new Map(existing.map((m) => [m.code.toLowerCase(), m.id]));
+  res.json(
+    codes
+      .map((code) => ({ code, name: students.get(code)!, memberId: memberOf.get(code.toLowerCase()) ?? null }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   );
 });

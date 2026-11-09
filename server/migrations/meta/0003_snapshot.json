@@ -1,5 +1,5 @@
 {
-  "id": "4ea6d39f-cbee-4d65-bb41-6c821f68fc1c",
+  "id": "ac0c0297-ad17-4253-b13a-76f831248179",
   "prevId": "fd50df89-3bdb-4d49-a824-111fb7de2434",
   "version": "7",
   "dialect": "postgresql",
@@ -1182,13 +1182,6 @@
         },
         "batches": {
           "name": "batches",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "added": {
-          "name": "added",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

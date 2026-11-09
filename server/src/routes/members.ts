@@ -25,6 +25,8 @@ export const memberInput = z.object({
   expiresOn: opt,
   active: z.boolean().default(true),
   notes: opt,
+  // Batch picked on the Add a member form; left out, an existing link is kept.
+  batchId: z.string().trim().min(1).nullish(),
 });
 
 export const membersRouter = Router();

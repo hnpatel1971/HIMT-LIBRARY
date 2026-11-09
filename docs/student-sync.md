@@ -1,7 +1,17 @@
 # Student sync from the central HIMT server
 
-The library brings students in from the central HIMT API (`api.himt.co.in`),
-so staff don't type them in by hand.
+Student details come from the central HIMT API (`api.himt.co.in`), so staff
+don't type them in by hand.
+
+## Adding a student
+
+Members > Add a member has a Course, Batch, Student picker at the top. It
+reads the central server live. Picking a student fills in member ID (central
+student ID), name, type STUDENT, department = course, member since = batch
+start and expires = batch end, and links the member to the batch. A student
+who is already a member is marked "already a member" with a link to their
+page. Staff and visitors are still entered by hand. The form no longer has
+phone and email fields.
 
 ## What it reads
 
@@ -15,11 +25,9 @@ so staff don't type them in by hand.
   `GET /api/user/GetStudentforExam?userType=Student_For_Lib&Batch_Id=<id>`.
   The API gives only the student ID and name.
 
-## What it does to members
+## What the nightly sync does to members
 
-- The central student ID is the member ID. A new ID becomes a STUDENT member
-  with department = course, linked to the batch, member since = batch start,
-  expires = batch end.
+- It never adds members. Students join through the form above.
 - An existing student member with that ID gets the central name, course,
   batch and expiry date. Staff edits to those fields are overwritten on the
   next run; phone, email, address and notes are left alone.
@@ -40,7 +48,7 @@ so staff don't type them in by hand.
   batches**, for librarians and admins, plus the course and batch lists and
   the history of runs with any problems.
 
-A full run reads about 120 batches and takes about a minute.
+A full run reads about 120 batches and takes under a minute.
 
 ## Settings
 

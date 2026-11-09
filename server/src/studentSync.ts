@@ -1,9 +1,11 @@
 // Brings students in from the central HIMT server (api.himt.co.in).
 //
 // For each course in the fixed `courses` table it reads the course's batches,
-// then the students of each batch, and adds or updates library members. The
-// central student ID is the member code. Nothing is ever deleted: a student
-// who drops out of the central list keeps their member record and loans.
+// then the students of each batch, and refreshes the students who are already
+// library members (name, course, batch, expiry). The central student ID is the
+// member code. It never adds members: staff add a student through the Add a
+// member form, which fills itself from the same central data. Nothing is ever
+// deleted.
 //
 // Daily runs only re-read batches that are running or ended recently; the
 // weekly full run (and the first run ever) re-reads every batch.
@@ -82,7 +84,6 @@ export interface SyncResult {
   runId: number;
   status: "ok" | "partial" | "failed";
   batches: number;
-  added: number;
   updated: number;
   unchanged: number;
   skipped: number;
@@ -124,7 +125,7 @@ async function runSync({ full, userId = null, api = centralApi }: { full: boolea
     .insert(syncRuns)
     .values({ kind: full ? "full" : "daily", startedBy: userId })
     .returning({ id: syncRuns.id });
-  const r: SyncResult = { runId: run.id, status: "ok", batches: 0, added: 0, updated: 0, unchanged: 0, skipped: 0, errors: [] };
+  const r: SyncResult = { runId: run.id, status: "ok", batches: 0, updated: 0, unchanged: 0, skipped: 0, errors: [] };
   const note = (msg: string) => {
     if (r.errors.length < 200) r.errors.push(msg);
   };
@@ -145,24 +146,10 @@ async function runSync({ full, userId = null, api = centralApi }: { full: boolea
         note(`Batches for ${c.name}: ${(e as Error).message}`);
         continue;
       }
-      for (const b of list) {
-        const id = tidy(b.Batch_Id);
-        if (!id) continue;
-        const row = {
-          id,
-          courseId: c.id,
-          name: tidy(b.Batch_Name).slice(0, 200) || id,
-          startsOn: dayOf(b.BatchStartDate),
-          endsOn: dayOf(b.BatchEndDate),
-          preseaBatchId: tidy(b.Presea_Batch_Id) || null,
-        };
-        await db
-          .insert(batches)
-          .values(row)
-          .onConflictDoUpdate({ target: batches.id, set: { courseId: row.courseId, name: row.name, startsOn: row.startsOn, endsOn: row.endsOn, preseaBatchId: row.preseaBatchId } });
-        const prev = known.get(id);
-        if (!prev || !prev.syncedAt) fresh.add(id);
-        known.set(id, { ...(prev ?? { students: 0, syncedAt: null }), ...row });
+      for (const row of await saveBatches(c.id, list)) {
+        const prev = known.get(row.id);
+        if (!prev || !prev.syncedAt) fresh.add(row.id);
+        known.set(row.id, { ...(prev ?? { students: 0, syncedAt: null }), ...row });
       }
     }
 
@@ -200,7 +187,6 @@ async function runSync({ full, userId = null, api = centralApi }: { full: boolea
       status: r.status,
       finishedAt: new Date(),
       batches: r.batches,
-      added: r.added,
       updated: r.updated,
       unchanged: r.unchanged,
       skipped: r.skipped,
@@ -211,6 +197,29 @@ async function runSync({ full, userId = null, api = centralApi }: { full: boolea
 }
 
 type BatchRow = typeof batches.$inferSelect;
+
+/** Stores a course's batch list as the central server sent it. */
+export async function saveBatches(courseId: number, list: CentralBatch[]) {
+  const rows = [];
+  for (const b of list) {
+    const id = tidy(b.Batch_Id);
+    if (!id) continue;
+    const row = {
+      id,
+      courseId,
+      name: tidy(b.Batch_Name).slice(0, 200) || id,
+      startsOn: dayOf(b.BatchStartDate),
+      endsOn: dayOf(b.BatchEndDate),
+      preseaBatchId: tidy(b.Presea_Batch_Id) || null,
+    };
+    await db
+      .insert(batches)
+      .values(row)
+      .onConflictDoUpdate({ target: batches.id, set: { courseId: row.courseId, name: row.name, startsOn: row.startsOn, endsOn: row.endsOn, preseaBatchId: row.preseaBatchId } });
+    rows.push(row);
+  }
+  return rows;
+}
 
 async function syncBatchStudents(
   b: Pick<BatchRow, "id" | "name" | "startsOn" | "endsOn">,
@@ -250,20 +259,8 @@ async function syncBatchStudents(
     for (const [key, packed] of students) {
       const [code, name] = JSON.parse(packed) as [string, string];
       const m = byCode.get(key);
-      if (!m) {
-        await tx.insert(members).values({
-          code,
-          name,
-          typeId,
-          department: course,
-          batchId: b.id,
-          joinedOn: b.startsOn ?? today(),
-          expiresOn: b.endsOn,
-          syncedAt: now,
-        });
-        r.added++;
-        continue;
-      }
+      // Students join the library through the Add a member form, not here.
+      if (!m) continue;
       if (m.typeId !== typeId) {
         // Same ID as a faculty or staff member: leave that record alone.
         r.skipped++;
@@ -327,7 +324,7 @@ export function startSyncScheduler() {
       const result = await startSync({ full: due.full });
       if (result) {
         console.log(
-          `Student sync (${due.full ? "full" : "daily"}): ${result.status}, ${result.batches} batches, ${result.added} added, ${result.updated} updated`,
+          `Student sync (${due.full ? "full" : "daily"}): ${result.status}, ${result.batches} batches, ${result.updated} updated`,
         );
       }
     } catch (e) {
