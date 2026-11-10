@@ -1,5 +1,5 @@
 {
-  "id": "1585873b-a628-4f01-91c1-a2c5c8576a4b",
+  "id": "7d79d6da-dfc3-467b-a3d1-b53ce104797d",
   "prevId": "db27129f-9cee-4e27-b38c-2d9c44e9d1c2",
   "version": "7",
   "dialect": "postgresql",
@@ -397,6 +397,127 @@
           ]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ebook_access": {
+      "name": "ebook_access",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "member_id": {
+          "name": "member_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title_id": {
+          "name": "title_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "granted_by": {
+          "name": "granted_by",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "granted_at": {
+          "name": "granted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "ebook_access_member_title": {
+          "name": "ebook_access_member_title",
+          "columns": [
+            {
+              "expression": "member_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "title_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "ebook_access_title_idx": {
+          "name": "ebook_access_title_idx",
+          "columns": [
+            {
+              "expression": "title_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ebook_access_member_id_members_id_fk": {
+          "name": "ebook_access_member_id_members_id_fk",
+          "tableFrom": "ebook_access",
+          "tableTo": "members",
+          "columnsFrom": [
+            "member_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ebook_access_title_id_titles_id_fk": {
+          "name": "ebook_access_title_id_titles_id_fk",
+          "tableFrom": "ebook_access",
+          "tableTo": "titles",
+          "columnsFrom": [
+            "title_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ebook_access_granted_by_users_id_fk": {
+          "name": "ebook_access_granted_by_users_id_fk",
+          "tableFrom": "ebook_access",
+          "tableTo": "users",
+          "columnsFrom": [
+            "granted_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -1725,7 +1846,7 @@
       "values": [
         "public",
         "staff",
-        "issued"
+        "granted"
       ]
     },
     "public.role": {

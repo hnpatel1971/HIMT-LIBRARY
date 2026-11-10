@@ -147,9 +147,9 @@ export function OpacTitle({ id }: { id: number }) {
                         </Link>
                       )}
                       <span className="text-sm text-slate-500">PDF, {fileSize(f.size)}</span>
-                      {f.issuedOnly && f.canRead === false && (
+                      {f.membersOnly && f.canRead === false && (
                         <span className="w-full text-sm text-slate-600">
-                          Members can read this e-book once it is issued to them. Ask at the library counter, then open it from My library.
+                          Members can read this e-book once the library gives them access. Ask at the library counter, then open it from My library.
                         </span>
                       )}
                     </li>

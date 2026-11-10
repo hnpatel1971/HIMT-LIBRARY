@@ -35,11 +35,10 @@ pnpm build
   a librarian or admin overrides it.
 - E-books: a title can carry PDF files. Readers open them in the browser from
   the public catalogue. Each file is for anyone, for staff only, or only for
-  members it is issued to. For the last one, give the title a copy (any
-  barcode, for example EB0001) and issue that copy at the counter as usual:
-  the member then gets a Read online button in My library until the copy is
-  returned. One copy can be issued to one member at a time, so add more
-  copies to lend the e-book to more people. Download and print are off unless
+  members given access. For the last one, staff open the member's page and
+  use Give access under E-books; the e-book then shows in the member's My
+  library (reached through the Employee Portal) until staff remove it. Any
+  number of members can read the same e-book at once. Download and print are off unless
   the librarian allows them. Files are stored in `FILES_DIR` (default
   `../files`), up to 100 MB each.
 - Barcode labels: Catalogue > Barcode labels prints Code 128 labels for

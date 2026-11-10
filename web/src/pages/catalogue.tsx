@@ -252,7 +252,7 @@ function FileRow({ titleId, f, lib }: { titleId: number; f: TitleFile; lib: bool
                   onChange={(e) => setEdit({ ...edit, access: e.target.value as FileAccess })}
                 >
                   <option value="public">Anyone using the catalogue</option>
-                  <option value="issued">Only members it is issued to (and staff)</option>
+                  <option value="granted">Only members given access (and staff)</option>
                   <option value="staff">Library staff only</option>
                 </select>
               </Field>
@@ -337,7 +337,7 @@ function TitleFiles({ titleId, files, lib }: { titleId: number; files: TitleFile
       {files.length === 0 ? (
         <p className="text-sm text-slate-500">
           Add a PDF to let readers open this title in their browser from the catalogue. New files can be read by anyone, online only. Use
-          Edit to change that, for example to let only members who have the title issued read it.
+          Edit to change that, for example so only members you give access to can read it.
         </p>
       ) : (
         <div className="overflow-x-auto">
