@@ -36,6 +36,13 @@
       "when": 1794233161167,
       "tag": "0004_sso_employee_id",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794287728481,
+      "tag": "0005_ebook_access",
+      "breakpoints": true
     }
   ]
 }

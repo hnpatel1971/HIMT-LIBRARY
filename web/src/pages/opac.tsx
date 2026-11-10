@@ -139,10 +139,19 @@ export function OpacTitle({ id }: { id: number }) {
                 <ul className="mt-2 space-y-2">
                   {t.files.map((f) => (
                     <li key={f.id} className="flex flex-wrap items-center gap-3">
-                      <Link href={`/read/${f.id}`} className="btn-primary">
-                        Read {f.name}
-                      </Link>
+                      {f.canRead === false ? (
+                        <span className="font-medium">{f.name}</span>
+                      ) : (
+                        <Link href={`/read/${f.id}`} className="btn-primary">
+                          Read {f.name}
+                        </Link>
+                      )}
                       <span className="text-sm text-slate-500">PDF, {fileSize(f.size)}</span>
+                      {f.membersOnly && f.canRead === false && (
+                        <span className="w-full text-sm text-slate-600">
+                          Members can read this e-book once the library gives them access. Ask at the library counter, then open it from My library.
+                        </span>
+                      )}
                     </li>
                   ))}
                 </ul>

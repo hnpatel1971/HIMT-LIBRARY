@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { api, ApiError, queryClient, type CopyInfo, type Lookup, type Me, type Paged, type TitleDetail, type TitleFile, type TitleRow } from "../api";
+import { accessLabel, api, ApiError, queryClient, type CopyInfo, type FileAccess, type Lookup, type Me, type Paged, type TitleDetail, type TitleFile, type TitleRow } from "../api";
 import { isLibrarian } from "../App";
 import { addToLabelList } from "./labels";
 import { Empty, ErrorNote, Field, fileSize, formatDate, Loading, Pager, rupees, StatusBadge, useDebounced } from "../ui";
@@ -219,7 +219,7 @@ async function uploadFile(titleId: number, file: File) {
 }
 
 function FileRow({ titleId, f, lib }: { titleId: number; f: TitleFile; lib: boolean }) {
-  const [edit, setEdit] = useState<{ name: string; access: "public" | "staff"; allowDownload: boolean } | null>(null);
+  const [edit, setEdit] = useState<{ name: string; access: FileAccess; allowDownload: boolean } | null>(null);
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["title", titleId] });
   const save = useMutation({
     mutationFn: () => api(`/files/${f.id}`, { method: "PUT", body: edit }),
@@ -249,9 +249,10 @@ function FileRow({ titleId, f, lib }: { titleId: number; f: TitleFile; lib: bool
                 <select
                   className="input"
                   value={edit.access}
-                  onChange={(e) => setEdit({ ...edit, access: e.target.value as "public" | "staff" })}
+                  onChange={(e) => setEdit({ ...edit, access: e.target.value as FileAccess })}
                 >
                   <option value="public">Anyone using the catalogue</option>
+                  <option value="granted">Only members given access (and staff)</option>
                   <option value="staff">Library staff only</option>
                 </select>
               </Field>
@@ -281,7 +282,7 @@ function FileRow({ titleId, f, lib }: { titleId: number; f: TitleFile; lib: bool
         <div className="text-xs text-slate-500">PDF, {fileSize(f.size)}</div>
         <ErrorNote error={del.error} />
       </td>
-      <td>{f.access === "staff" ? "Staff only" : "Anyone"}</td>
+      <td>{accessLabel[f.access ?? "public"]}</td>
       <td>{f.allowDownload ? "Allowed" : "Read online only"}</td>
       <td className="text-right">{f.opens}</td>
       {lib && (
@@ -336,7 +337,7 @@ function TitleFiles({ titleId, files, lib }: { titleId: number; files: TitleFile
       {files.length === 0 ? (
         <p className="text-sm text-slate-500">
           Add a PDF to let readers open this title in their browser from the catalogue. New files can be read by anyone, online only. Use
-          Edit to change that.
+          Edit to change that, for example so only members you give access to can read it.
         </p>
       ) : (
         <div className="overflow-x-auto">

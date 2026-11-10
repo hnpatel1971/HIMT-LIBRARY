@@ -16,7 +16,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["admin", "librarian", "assistant"]);
-export const fileAccessEnum = pgEnum("file_access", ["public", "staff"]);
+export const fileAccessEnum = pgEnum("file_access", ["public", "staff", "granted"]);
 export const copyStatusEnum = pgEnum("copy_status", ["available", "repair", "no_loan", "missing", "withdrawn"]);
 
 const id = () => serial("id").primaryKey();
@@ -198,7 +198,8 @@ export const titleFiles = pgTable(
     // File name on disk, under FILES_DIR.
     storedName: varchar("stored_name", { length: 64 }).notNull().unique(),
     size: integer("size").notNull(),
-    // public: anyone using the catalogue; staff: only signed-in staff.
+    // public: anyone using the catalogue; staff: only signed-in staff;
+    // granted: staff, and members given access to the title (table ebook_access).
     access: fileAccessEnum("access").notNull().default("public"),
     allowDownload: boolean("allow_download").notNull().default(false),
     opens: integer("opens").notNull().default(0),
@@ -206,6 +207,25 @@ export const titleFiles = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("title_files_title_idx").on(t.titleId)],
+);
+
+// Members given access to a title's e-book files (access "granted").
+// Staff add and remove these on the member's page; any number of members
+// can read the same e-book at once.
+export const ebookAccess = pgTable(
+  "ebook_access",
+  {
+    id: id(),
+    memberId: ref("member_id")
+      .notNull()
+      .references(() => members.id),
+    titleId: ref("title_id")
+      .notNull()
+      .references(() => titles.id),
+    grantedBy: ref("granted_by").references(() => users.id),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("ebook_access_member_title").on(t.memberId, t.titleId), index("ebook_access_title_idx").on(t.titleId)],
 );
 
 export const loans = pgTable(

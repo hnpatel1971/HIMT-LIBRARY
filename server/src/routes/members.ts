@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "../db/index.js";
 import { requireRole } from "../auth.js";
@@ -9,7 +9,7 @@ import { today } from "../calendar.js";
 import { badRequest, notFound } from "../errors.js";
 import { sameCode } from "../codes.js";
 
-const { members, memberTypes, loans, copies, titles, fines, payments, batches, courses } = schema;
+const { members, memberTypes, loans, copies, titles, fines, payments, batches, courses, ebookAccess, titleFiles } = schema;
 
 const opt = z.string().trim().nullish().transform((v) => (v ? v : null));
 
@@ -105,6 +105,20 @@ export async function memberDetail(where: ReturnType<typeof eq>) {
     .from(payments)
     .where(eq(payments.memberId, m.member.id))
     .orderBy(desc(payments.paidOn));
+  // E-books staff have given this member (with the files they can open).
+  const ebookRows = await db
+    .select({ titleId: ebookAccess.titleId, title: titles.title, grantedAt: ebookAccess.grantedAt })
+    .from(ebookAccess)
+    .innerJoin(titles, eq(ebookAccess.titleId, titles.id))
+    .where(eq(ebookAccess.memberId, m.member.id))
+    .orderBy(asc(titles.title));
+  const ebookFiles = ebookRows.length
+    ? await db
+        .select({ id: titleFiles.id, titleId: titleFiles.titleId, name: titleFiles.name, size: titleFiles.size })
+        .from(titleFiles)
+        .where(and(inArray(titleFiles.titleId, ebookRows.map((e) => e.titleId)), ne(titleFiles.access, "staff")))
+        .orderBy(asc(titleFiles.id))
+    : [];
   const charged = fineRows.filter((f) => !f.waived).reduce((s, f) => s + Number(f.amount), 0);
   const paid = paymentRows.reduce((s, p) => s + Number(p.amount), 0);
   const on = today();
@@ -114,6 +128,7 @@ export async function memberDetail(where: ReturnType<typeof eq>) {
     batch: batch ?? null,
     current: loanRows.filter((l) => !l.returnedOn).map((l) => ({ ...l, overdue: l.dueOn < on })),
     history: loanRows.filter((l) => l.returnedOn),
+    ebooks: ebookRows.map((e) => ({ ...e, files: ebookFiles.filter((f) => f.titleId === e.titleId) })),
     fines: fineRows,
     payments: paymentRows,
     balance: charged - paid,

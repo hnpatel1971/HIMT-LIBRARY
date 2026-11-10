@@ -211,6 +211,8 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
         )}
       </div>
 
+      <MemberEbooks memberId={id} ebooks={m.ebooks} />
+
       <div className="card space-y-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2>Fines</h2>
@@ -293,6 +295,93 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
           </table>
         )}
       </div>
+    </div>
+  );
+}
+
+/** E-books this member may read in My library, with Give access and Remove. */
+function MemberEbooks({ memberId, ebooks }: { memberId: number; ebooks: MemberDetail["ebooks"] }) {
+  const [q, setQ] = useState("");
+  const dq = useDebounced(q, 250);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ["member", memberId] });
+  const found = useQuery({
+    queryKey: ["ebook-titles", dq],
+    queryFn: () => api<{ id: number; title: string }[]>(`/ebook-titles?q=${encodeURIComponent(dq)}`),
+    enabled: dq.length > 0,
+  });
+  const give = useMutation({
+    mutationFn: (titleId: number) => api(`/members/${memberId}/ebooks`, { method: "POST", body: { titleId } }),
+    onSuccess: () => {
+      setQ("");
+      refresh();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (titleId: number) => api(`/members/${memberId}/ebooks/${titleId}`, { method: "DELETE" }),
+    onSuccess: refresh,
+  });
+  const have = new Set(ebooks.map((e) => e.titleId));
+  return (
+    <div className="card space-y-3">
+      <h2>E-books ({ebooks.length})</h2>
+      <p className="text-sm text-slate-500">
+        E-books given here appear in the member's My library, where they can read them online. Remove takes the access away.
+      </p>
+      <ErrorNote error={give.error ?? remove.error} />
+      {ebooks.length > 0 && (
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Given on</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {ebooks.map((e) => (
+              <tr key={e.titleId}>
+                <td>
+                  <Link href={`/staff/catalogue/${e.titleId}`} className="text-brand-700 underline">
+                    {e.title}
+                  </Link>
+                </td>
+                <td className="whitespace-nowrap">{formatDate(e.grantedAt.slice(0, 10))}</td>
+                <td className="text-right">
+                  <button
+                    className="text-sm text-red-700 underline"
+                    onClick={() => confirm(`Remove access to ${e.title}?`) && remove.mutate(e.titleId)}
+                  >
+                    Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <Field label="Give access to an e-book">
+        <input className="input" placeholder="Type part of the e-book's title" value={q} onChange={(e) => setQ(e.target.value)} />
+      </Field>
+      {dq && found.data && (
+        found.data.length === 0 ? (
+          <p className="text-sm text-slate-500">No e-book matches. Only titles with a PDF that members can read are listed.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100 rounded-md border border-slate-200">
+            {found.data.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <span>{t.title}</span>
+                {have.has(t.id) ? (
+                  <span className="text-sm text-slate-500">Already given</span>
+                ) : (
+                  <button className="btn-primary px-3 py-1 text-sm" disabled={give.isPending} onClick={() => give.mutate(t.id)}>
+                    Give access
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )
+      )}
     </div>
   );
 }

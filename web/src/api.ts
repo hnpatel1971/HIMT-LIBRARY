@@ -97,12 +97,22 @@ export interface TitleDetail {
   files: TitleFile[];
 }
 /** An e-book file on a title. Staff see every field; the public catalogue only some. */
+export type FileAccess = "public" | "staff" | "granted";
+export const accessLabel: Record<FileAccess, string> = {
+  public: "Anyone",
+  granted: "Members given access",
+  staff: "Staff only",
+};
 export interface TitleFile {
   id: number;
   name: string;
   size: number;
   allowDownload: boolean;
-  access?: "public" | "staff";
+  access?: FileAccess;
+  /** Public catalogue: true when only members given access can read it. */
+  membersOnly?: boolean;
+  /** Public catalogue: whether the current visitor can open it. */
+  canRead?: boolean;
   opens?: number;
   createdAt?: string;
 }
@@ -172,6 +182,8 @@ export interface MemberDetail {
   syncedAt: string | null;
   current: LoanLine[];
   history: LoanLine[];
+  /** E-books staff have given this member. */
+  ebooks: { titleId: number; title: string; grantedAt: string; files: { id: number; name: string; size: number }[] }[];
   fines: { id: number; amount: string; reason: string; chargedOn: string; waived: boolean }[];
   payments: { id: number; amount: string; paidOn: string; receiptNo: string | null; note: string | null }[];
   balance: number;

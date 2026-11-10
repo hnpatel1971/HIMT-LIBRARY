@@ -152,7 +152,7 @@ ssoRouter.get("/my", async (req, res) => {
   if (!id) throw new AppError(401, "Not signed in");
   const m = await memberDetail(eq(schema.members.id, id));
   if (!m || !m.active) throw new AppError(401, "Not signed in");
-  const { notes: _notes, address: _address, ...mine } = m;
+  const { notes: _notes, address: _address, phone: _phone, email: _email, ...mine } = m;
   res.json({ ...mine, history: mine.history.slice(0, 50) });
 });
 

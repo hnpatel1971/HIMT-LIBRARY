@@ -34,9 +34,13 @@ pnpm build
 - A member with overdue books, or an expired membership, can only borrow when
   a librarian or admin overrides it.
 - E-books: a title can carry PDF files. Readers open them in the browser from
-  the public catalogue. Each file is either for anyone or for staff only, and
-  download and print are off unless the librarian allows them. Files are
-  stored in `FILES_DIR` (default `../files`), up to 100 MB each.
+  the public catalogue. Each file is for anyone, for staff only, or only for
+  members given access. For the last one, staff open the member's page and
+  use Give access under E-books; the e-book then shows in the member's My
+  library (reached through the Employee Portal) until staff remove it. Any
+  number of members can read the same e-book at once. Download and print are off unless
+  the librarian allows them. Files are stored in `FILES_DIR` (default
+  `../files`), up to 100 MB each.
 - Barcode labels: Catalogue > Barcode labels prints Code 128 labels for
   chosen copies on A4, 15 per sheet by default (3 across, 64 x 50 mm), with
   the title above the barcode cut to 50 characters. Pick copies by title or
