@@ -1,4 +1,4 @@
-# Single sign-on from the HIMT Employee Portal
+# Single sign-on from the HIMT Employee Portal (and the student LMS)
 
 Employees who are already signed in to the Employee Portal open the library
 without typing a library password. The portal identifies them by their HIMT
@@ -121,6 +121,45 @@ curl -X POST https://library.himt.in/api/sso/ticket \
 ```
 
 Open the returned `loginUrl` in a browser within 60 seconds.
+
+## Students, from the HIMT LMS
+
+Students sign in the same way, from the HIMT student LMS instead of the
+Employee Portal. Their library **Member ID** is their central HIMT student ID
+(for example `124764`), because the nightly student sync creates members that
+way. Nothing else needs setting up in the library.
+
+The LMS **server** asks for a ticket with `memberCode` (not `employeeId`), so a
+student can never be matched to a staff account:
+
+```json
+{ "memberCode": "124764" }
+```
+
+Then it redirects the student's browser to `loginUrl`, exactly like the
+Employee Portal does. The student lands on **My library**, where they see their
+loans and fines and can read any e-books staff have given them access to
+(member page > E-books > Give access).
+
+Use the same `SSO_API_KEY`. If the LMS runs on another server, add its IP to
+`SSO_ALLOWED_IPS` (when that setting is used). A student whose membership is
+switched off gets 403; one who isn't in the library yet gets 404 (they appear
+after the next nightly sync).
+
+Example for the LMS (Node / Express), behind a "Library" link in the student menu:
+
+```js
+app.get("/go/library", requireStudentLogin, async (req, res) => {
+  const r = await fetch("https://library.himt.in/api/sso/ticket", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-SSO-Key": process.env.LIBRARY_SSO_KEY },
+    body: JSON.stringify({ memberCode: String(req.user.studentId) }),
+  });
+  const data = await r.json();
+  if (!r.ok) return res.status(r.status).send(data.error ?? "The library could not sign you in");
+  res.redirect(data.loginUrl);
+});
+```
 
 ## If something goes wrong
 
