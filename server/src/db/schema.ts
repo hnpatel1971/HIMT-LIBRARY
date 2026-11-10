@@ -28,6 +28,8 @@ export const users = pgTable("users", {
   id: id(),
   username: varchar("username", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 128 }).notNull(),
+  /** HIMT employee ID, used to match Employee Portal sign-ins to this staff account. */
+  employeeId: varchar("employee_id", { length: 32 }).unique(),
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   role: roleEnum("role").notNull().default("assistant"),
   active: boolean("active").notNull().default(true),

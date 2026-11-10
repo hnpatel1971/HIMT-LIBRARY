@@ -13,6 +13,7 @@ import { Reports } from "./pages/reports";
 import { Settings } from "./pages/settings";
 import { VisitorCheckIn } from "./pages/visits";
 import { BarcodeLabels } from "./pages/labels";
+import { MyLibrary } from "./pages/my";
 // The PDF reader is large, so it loads only when someone opens an e-book.
 const Reader = lazy(() => import("./pages/reader").then((m) => ({ default: m.Reader })));
 import logo from "./assets/himt-logo.png";
@@ -160,6 +161,9 @@ export function App() {
             <Reader id={Number(p.id)} />
           </Suspense>
         )}
+      </Route>
+      <Route path="/my">
+        <MyLibrary />
       </Route>
       <Route path="/staff/login">
         <Login />

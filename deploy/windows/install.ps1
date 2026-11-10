@@ -107,6 +107,13 @@ ADMIN_PASSWORD=FILL_ME
 # where the port is SITE_PORT, or the first free one from 8081 if that is empty.
 SITE_HOST=
 SITE_PORT=
+
+# Single sign-on from the HIMT Employee Portal. Give this key to the portal's
+# developers; leave it empty to keep SSO off. SSO_ALLOWED_IPS optionally limits
+# which server IPs may ask for login links (comma-separated).
+SSO_API_KEY=$(New-Secret)
+SSO_ALLOWED_IPS=
+PUBLIC_URL=
 "@
   Set-Content -Path $EnvFile -Value $template -Encoding ASCII
 }

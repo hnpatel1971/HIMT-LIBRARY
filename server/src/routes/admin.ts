@@ -96,6 +96,12 @@ adminRouter.put("/weekly-off", requireRole("admin"), async (req, res) => {
 const userInput = z.object({
   username: z.string().trim().min(3),
   name: z.string().trim().min(1),
+  employeeId: z
+    .string()
+    .trim()
+    .max(32)
+    .nullish()
+    .transform((v) => v || null),
   role: z.enum(["admin", "librarian", "assistant"]),
   active: z.boolean().default(true),
   password: z.string().min(8, "Password must be at least 8 characters").optional(),
@@ -104,7 +110,7 @@ const userInput = z.object({
 adminRouter.get("/users", requireRole("admin"), async (_req, res) => {
   res.json(
     await db
-      .select({ id: users.id, username: users.username, name: users.name, role: users.role, active: users.active, lastLoginAt: users.lastLoginAt })
+      .select({ id: users.id, username: users.username, name: users.name, employeeId: users.employeeId, role: users.role, active: users.active, lastLoginAt: users.lastLoginAt })
       .from(users)
       .orderBy(asc(users.name)),
   );

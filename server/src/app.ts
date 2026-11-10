@@ -15,6 +15,7 @@ import { circulationRouter } from "./routes/circulation.js";
 import { adminRouter } from "./routes/admin.js";
 import { opacRouter, reportsRouter } from "./routes/reports.js";
 import { filesRouter, MAX_FILE_MB } from "./routes/files.js";
+import { ssoRouter } from "./sso.js";
 import { syncRouter } from "./routes/sync.js";
 
 // Small in-memory brake on password guessing: 10 failures per IP per 15 minutes.
@@ -92,7 +93,7 @@ export function createApp() {
     res.json(req.user);
   });
 
-  api.use(opacRouter, filesRouter, catalogueRouter, membersRouter, circulationRouter, adminRouter, reportsRouter, syncRouter);
+  api.use(ssoRouter, opacRouter, filesRouter, catalogueRouter, membersRouter, circulationRouter, adminRouter, reportsRouter, syncRouter);
   api.use((_req, _res, next) => next(new AppError(404, "Not found")));
   app.use("/api", api);
 
