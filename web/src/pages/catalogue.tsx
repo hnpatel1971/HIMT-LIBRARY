@@ -16,10 +16,11 @@ export function useLookups() {
 export function CatalogueList({ me }: { me: Me }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [ebooksOnly, setEbooksOnly] = useState(false);
   const term = useDebounced(q.trim());
   const { data, isLoading, error } = useQuery({
-    queryKey: ["titles", term, page],
-    queryFn: () => api<Paged<TitleRow>>(`/titles?q=${encodeURIComponent(term)}&page=${page}`),
+    queryKey: ["titles", term, page, ebooksOnly],
+    queryFn: () => api<Paged<TitleRow>>(`/titles?q=${encodeURIComponent(term)}&page=${page}${ebooksOnly ? "&ebooks=1" : ""}`),
     placeholderData: keepPreviousData,
   });
   return (
@@ -41,12 +42,24 @@ export function CatalogueList({ me }: { me: Me }) {
           setPage(1);
         }}
       />
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={ebooksOnly}
+          onChange={(e) => {
+            setEbooksOnly(e.target.checked);
+            setPage(1);
+          }}
+        />
+        E-books only
+        {ebooksOnly && data && <span className="text-slate-500">({data.total})</span>}
+      </label>
       <ErrorNote error={error} />
       <div className="card overflow-x-auto p-0">
         {isLoading ? (
           <Loading />
         ) : !data?.rows.length ? (
-          <Empty>No titles found.</Empty>
+          <Empty>{ebooksOnly ? "No e-books found." : "No titles found."}</Empty>
         ) : (
           <table className="table">
             <thead>
@@ -65,6 +78,13 @@ export function CatalogueList({ me }: { me: Me }) {
                     <Link href={`/staff/catalogue/${t.id}`} className="font-medium text-brand-700 hover:underline">
                       {t.title}
                     </Link>
+                    {t.isEbook && (
+                      <span
+                        className={`ml-2 inline-block whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium ${t.pdfs ? "bg-brand-100 text-brand-900" : "bg-amber-100 text-amber-800"}`}
+                      >
+                        {t.pdfs ? "E-book" : "E-book, no PDF yet"}
+                      </span>
+                    )}
                     <div className="text-xs text-slate-500">{[t.publisher, t.year].filter(Boolean).join(", ")}</div>
                   </td>
                   <td>{[...t.authors, t.corporateAuthor].filter(Boolean).join(", ")}</td>

@@ -57,6 +57,10 @@ export interface TitleRow {
   copies: number;
   available: number;
   ebooks: number;
+  /** Has a PDF attached, or its format is Electronic Resource. */
+  isEbook: boolean;
+  /** PDFs attached (any access). */
+  pdfs: number;
 }
 export interface CopyInfo {
   id: number;
