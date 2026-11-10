@@ -5,7 +5,7 @@ import { db, schema } from "../db/index.js";
 import { requireRole } from "../auth.js";
 import { audit } from "../audit.js";
 import { AppError } from "../errors.js";
-import { centralApi, isSyncRunning, saveBatches, startSync, SYNC_HOUR, tidy } from "../studentSync.js";
+import { centralApi, findCentralStudent, isSyncRunning, saveBatches, startSync, SYNC_HOUR, tidy } from "../studentSync.js";
 
 const { courses, batches, members, syncRuns, users } = schema;
 
@@ -135,4 +135,32 @@ syncRouter.get("/central/batches/:id/students", requireRole("assistant"), async 
       .map((code) => ({ code, name: students.get(code)!, memberId: memberOf.get(code.toLowerCase()) ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   );
+});
+
+/**
+ * Add a member: type the ID, get the rest. An existing member comes back as
+ * { memberId }, a student found on the central server as { student }.
+ */
+syncRouter.get("/central/lookup/:code", requireRole("assistant"), async (req, res) => {
+  const code = tidy(String(req.params.code));
+  if (!code) throw new AppError(400, "Type a member ID");
+  const [m] = await db
+    .select({ id: members.id, name: members.name })
+    .from(members)
+    .where(sql`lower(${members.code}) = lower(${code})`);
+  if (m) {
+    res.json({ memberId: m.id, name: m.name });
+    return;
+  }
+  const student = await central("lookup", () => findCentralStudent(code));
+  if (!student) throw new AppError(404, `No student with ID ${code} in the central HIMT records`);
+  res.json({ student });
+});
+
+/** The central record for one ID, whether or not they are a member yet. */
+syncRouter.get("/central/student/:code", requireRole("assistant"), async (req, res) => {
+  const code = tidy(String(req.params.code));
+  const student = await central("lookup", () => findCentralStudent(code));
+  if (!student) throw new AppError(404, `No student with ID ${code} in the central HIMT records`);
+  res.json(student);
 });

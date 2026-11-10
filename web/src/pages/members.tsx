@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
-import { api, queryClient, type Me, type MemberDetail, type MemberRow, type MemberType, type Paged } from "../api";
+import { api, ApiError, queryClient, type Me, type MemberDetail, type MemberRow, type MemberType, type Paged } from "../api";
 import { isLibrarian } from "../App";
 import { Empty, ErrorNote, Field, formatDate, Loading, Notice, Pager, rupees, useDebounced } from "../ui";
 
@@ -27,7 +27,7 @@ export function MemberList() {
       </div>
       <input
         className="input"
-        placeholder="Search by name, member ID or department"
+        placeholder="Search by name, member ID, course or batch ID"
         value={q}
         onChange={(e) => {
           setQ(e.target.value);
@@ -46,6 +46,8 @@ export function MemberList() {
               <tr>
                 <th>Name</th>
                 <th>ID</th>
+                <th>Department / course</th>
+                <th>Batch</th>
                 <th>Type</th>
                 <th>Expires</th>
                 <th className="text-right">On loan</th>
@@ -62,6 +64,15 @@ export function MemberList() {
                     {!m.active && <span className="ml-2 text-xs">(inactive)</span>}
                   </td>
                   <td className="font-mono">{m.code}</td>
+                  <td>{m.department}</td>
+                  <td>
+                    {m.batchId && (
+                      <>
+                        <span className="font-mono">{m.batchId}</span>
+                        {m.batchName && <div className="text-xs text-slate-500">{m.batchName}</div>}
+                      </>
+                    )}
+                  </td>
                   <td>{m.type}</td>
                   <td className="whitespace-nowrap">{formatDate(m.expiresOn)}</td>
                   <td className="text-right">{m.onLoan}</td>
@@ -145,7 +156,7 @@ export function MemberPage({ id, me }: { id: number; me: Me }) {
               ...(m.batch
                 ? ([
                     ["Course", m.batch.course],
-                    ["Batch", m.batch.name],
+                    ["Batch", `${m.batch.id} · ${m.batch.name}`],
                   ] as const)
                 : ([["Department", m.department]] as const)),
               ["Address", m.address],
@@ -414,6 +425,59 @@ export function MemberEditor({ id }: { id?: number }) {
   useEffect(() => {
     if (!f.typeId && types.length) setF((x) => ({ ...x, typeId: String(types.find((t) => /student/i.test(t.name))?.id ?? types[0].id) }));
   }, [types, f.typeId]);
+  const [pickOpen, setPickOpen] = useState(false);
+  const [batchName, setBatchName] = useState("");
+  useEffect(() => {
+    if (existing.data?.batch) setBatchName(existing.data.batch.name);
+  }, [existing.data]);
+  // Editing a student: check the name against the central record for this ID.
+  const isStudent = !!existing.data && (!!existing.data.batchId || /student/i.test(existing.data.type.name));
+  const centralRec = useQuery({
+    queryKey: ["central", "student", existing.data?.code],
+    queryFn: () => api<Picked & { batchName: string }>(`/central/student/${encodeURIComponent(existing.data!.code)}`),
+    enabled: !!id && isStudent,
+    retry: false,
+  });
+  const [renamedFrom, setRenamedFrom] = useState<string | null>(null);
+  useEffect(() => {
+    const c = centralRec.data;
+    const m = existing.data;
+    if (!c || !m || c.name === m.name) return;
+    setF((x) => ({ ...x, name: c.name, department: c.course, batchId: c.batchId }));
+    setBatchName(c.batchName);
+    setRenamedFrom(m.name);
+  }, [centralRec.data, existing.data]);
+  const [look, setLook] = useState<Lookup>({ state: "idle", code: "" });
+  const fill = (p: Picked) => {
+    const student = types.find((t) => /student/i.test(t.name));
+    setF((x) => ({
+      ...x,
+      code: p.code,
+      name: p.name,
+      typeId: student ? String(student.id) : x.typeId,
+      department: p.course,
+      joinedOn: p.startsOn ?? x.joinedOn,
+      expiresOn: p.endsOn ?? "",
+      batchId: p.batchId,
+    }));
+    setBatchName(p.batchName ?? "");
+  };
+  const lookup = async (raw: string) => {
+    const code = raw.trim();
+    if (!code || (code === look.code && look.state !== "error")) return;
+    setLook({ state: "busy", code });
+    try {
+      const r = await api<{ memberId?: number; name?: string; student?: Picked & { batchName: string } }>(`/central/lookup/${encodeURIComponent(code)}`);
+      if (r.memberId) {
+        setLook({ state: "member", code, memberId: r.memberId, name: r.name ?? "" });
+      } else if (r.student) {
+        fill(r.student);
+        setLook({ state: "found", code, batchName: r.student.batchName });
+      }
+    } catch (e) {
+      setLook(e instanceof ApiError && e.status === 404 ? { state: "none", code } : { state: "error", code, message: (e as Error).message });
+    }
+  };
   const save = useMutation({
     mutationFn: () =>
       api<{ id: number }>(id ? `/members/${id}` : "/members", { method: id ? "PUT" : "POST", body: { ...f, typeId: Number(f.typeId), batchId: f.batchId || undefined } }),
@@ -434,30 +498,48 @@ export function MemberEditor({ id }: { id?: number }) {
       }}
     >
       <h1>{id ? "Edit member" : "Add a member"}</h1>
-      {!id && (
-        <StudentPicker
-          onPick={(p) => {
-            const student = types.find((t) => /student/i.test(t.name));
-            setF((x) => ({
-              ...x,
-              code: p.code,
-              name: p.name,
-              typeId: student ? String(student.id) : x.typeId,
-              department: p.course,
-              joinedOn: p.startsOn ?? x.joinedOn,
-              expiresOn: p.endsOn ?? "",
-              batchId: p.batchId,
-            }));
-          }}
-        />
-      )}
+      {!id && pickOpen && <StudentPicker onPick={fill} />}
       <ErrorNote error={save.error} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Member ID" hint="Usually the college ID or roll number">
-          <input className="input font-mono" value={f.code} onChange={set("code")} required autoFocus={!id} />
+        <Field
+          label="Member ID"
+          hint={id ? "Usually the college ID or roll number" : "For a student, type the ID and press Enter. The rest fills in from the central HIMT records"}
+        >
+          <input
+            className="input font-mono"
+            value={f.code}
+            onChange={set("code")}
+            onBlur={() => !id && lookup(f.code)}
+            onKeyDown={(e) => {
+              if (!id && e.key === "Enter") {
+                e.preventDefault();
+                lookup(f.code);
+              }
+            }}
+            required
+            autoFocus={!id}
+          />
+          {!id && <LookupNote state={look} onPick={() => setPickOpen(true)} />}
         </Field>
         <Field label="Full name">
           <input className="input" value={f.name} onChange={set("name")} required />
+          {renamedFrom && (
+            <p className="mt-2 text-sm text-green-700">
+              Updated to the name in the central records for this ID (was "{renamedFrom}"). Save to keep it.
+            </p>
+          )}
+        </Field>
+        <Field label="Department / course">
+          <input className="input" value={f.department} onChange={set("department")} />
+        </Field>
+        <Field label="Batch ID" hint={f.batchId ? batchName : "Set from the student's central record"}>
+          <input className="input font-mono" value={f.batchId} readOnly placeholder="—" />
+        </Field>
+        <Field label="Member since">
+          <input className="input" type="date" value={f.joinedOn} onChange={set("joinedOn")} />
+        </Field>
+        <Field label="Expires on" hint="Leave empty to use the member type's period">
+          <input className="input" type="date" value={f.expiresOn} onChange={set("expiresOn")} />
         </Field>
         <Field label="Member type">
           <select className="input" value={f.typeId} onChange={set("typeId")}>
@@ -467,15 +549,6 @@ export function MemberEditor({ id }: { id?: number }) {
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Department / course">
-          <input className="input" value={f.department} onChange={set("department")} />
-        </Field>
-        <Field label="Member since">
-          <input className="input" type="date" value={f.joinedOn} onChange={set("joinedOn")} />
-        </Field>
-        <Field label="Expires on" hint="Leave empty to use the member type's period">
-          <input className="input" type="date" value={f.expiresOn} onChange={set("expiresOn")} />
         </Field>
       </div>
       <Field label="Address">
@@ -507,6 +580,7 @@ interface Picked {
   name: string;
   course: string;
   batchId: string;
+  batchName?: string;
   startsOn: string | null;
   endsOn: string | null;
 }
@@ -581,7 +655,7 @@ function StudentPicker({ onPick }: { onPick: (p: Picked) => void }) {
               const s = studentsQ.data?.find((x) => x.code === e.target.value);
               setCode(e.target.value);
               if (s && !s.memberId && course && batch) {
-                onPick({ code: s.code, name: s.name, course: course.name, batchId: batch.id, startsOn: batch.startsOn, endsOn: batch.endsOn });
+                onPick({ code: s.code, name: s.name, course: course.name, batchId: batch.id, batchName: batch.name, startsOn: batch.startsOn, endsOn: batch.endsOn });
               }
             }}
           >
@@ -606,4 +680,48 @@ function StudentPicker({ onPick }: { onPick: (p: Picked) => void }) {
       )}
     </div>
   );
+}
+
+type Lookup =
+  | { state: "idle" | "busy" | "none"; code: string }
+  | { state: "found"; code: string; batchName: string }
+  | { state: "member"; code: string; memberId: number; name: string }
+  | { state: "error"; code: string; message: string };
+
+function LookupNote({ state, onPick }: { state: Lookup; onPick: () => void }) {
+  const pick = (
+    <button type="button" className="underline" onClick={onPick}>
+      pick from course and batch
+    </button>
+  );
+  const box = "mt-2 text-sm";
+  switch (state.state) {
+    case "busy":
+      return <p className={`${box} text-slate-600`}>Looking up {state.code} in the central HIMT records…</p>;
+    case "found":
+      return <p className={`${box} text-green-700`}>Filled in from the central records ({state.batchName}). Check and save.</p>;
+    case "member":
+      return (
+        <p className={`${box} text-amber-700`}>
+          {state.name} already has this member ID.{" "}
+          <Link href={`/staff/members/${state.memberId}`} className="underline">
+            Open their page
+          </Link>
+        </p>
+      );
+    case "none":
+      return (
+        <p className={`${box} text-amber-700`}>
+          No student with this ID in the central records. Fill the form by hand, or {pick}.
+        </p>
+      );
+    case "error":
+      return (
+        <p className={`${box} text-red-700`}>
+          {state.message} You can also {pick}.
+        </p>
+      );
+    default:
+      return null;
+  }
 }

@@ -59,7 +59,6 @@ export function Dashboard() {
                 <th>Due</th>
                 <th>Book</th>
                 <th>Member</th>
-                <th>Phone</th>
               </tr>
             </thead>
             <tbody>
@@ -72,7 +71,6 @@ export function Dashboard() {
                       {l.member}
                     </Link>
                   </td>
-                  <td>{l.phone}</td>
                 </tr>
               ))}
             </tbody>

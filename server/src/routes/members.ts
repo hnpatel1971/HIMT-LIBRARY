@@ -35,7 +35,9 @@ membersRouter.get("/members", requireRole("assistant"), async (req, res) => {
   const q = String(req.query.q ?? "").trim();
   const page = Math.max(1, Number(req.query.page) || 1);
   const pageSize = 25;
-  const where = q ? or(ilike(members.name, `%${q}%`), sameCode(members.code, q), ilike(members.department, `%${q}%`)) : undefined;
+  const where = q
+    ? or(ilike(members.name, `%${q}%`), sameCode(members.code, q), ilike(members.department, `%${q}%`), sameCode(members.batchId, q))
+    : undefined;
   const rows = await db
     .select({
       id: members.id,
@@ -43,6 +45,8 @@ membersRouter.get("/members", requireRole("assistant"), async (req, res) => {
       name: members.name,
       type: memberTypes.name,
       department: members.department,
+      batchId: members.batchId,
+      batchName: batches.name,
       expiresOn: members.expiresOn,
       active: members.active,
       onLoan: sql<number>`(SELECT count(*) FROM loans l WHERE l.member_id = "members"."id" AND l.returned_on IS NULL)`,
@@ -50,6 +54,7 @@ membersRouter.get("/members", requireRole("assistant"), async (req, res) => {
     })
     .from(members)
     .innerJoin(memberTypes, eq(members.typeId, memberTypes.id))
+    .leftJoin(batches, eq(members.batchId, batches.id))
     .where(where)
     .orderBy(asc(members.name))
     .limit(pageSize)
