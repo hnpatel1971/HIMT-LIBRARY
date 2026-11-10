@@ -58,8 +58,12 @@ export function titleSearch(q: string | undefined) {
     OR EXISTS (SELECT 1 FROM copies c WHERE c.title_id = "titles"."id" AND lower(c.barcode) = lower(${term})))`;
 }
 
-export async function listTitles(q: string | undefined, page: number, pageSize = 25) {
-  const where = titleSearch(q);
+/** An e-book: it has a PDF attached, or its format is "Electronic Resource" (as in the old SLiMS data). */
+const isEbookSql = sql`(EXISTS (SELECT 1 FROM title_files f WHERE f.title_id = "titles"."id")
+  OR EXISTS (SELECT 1 FROM formats fm WHERE fm.id = "titles"."format_id" AND fm.name ILIKE 'electronic%'))`;
+
+export async function listTitles(q: string | undefined, page: number, pageSize = 25, ebooksOnly = false) {
+  const where = and(titleSearch(q), ebooksOnly ? isEbookSql : undefined);
   const rows = await db
     .select({
       id: titles.id,
@@ -74,6 +78,8 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
       available: sql<number>`(SELECT count(*) FROM copies c WHERE c.title_id = "titles"."id" AND c.status = 'available'
         AND NOT EXISTS (SELECT 1 FROM loans l WHERE l.copy_id = c.id AND l.returned_on IS NULL))`,
       ebooks: sql<number>`(SELECT count(*) FROM title_files f WHERE f.title_id = "titles"."id" AND f.access <> 'staff')`,
+      isEbook: sql<boolean>`${isEbookSql}`,
+      pdfs: sql<number>`(SELECT count(*) FROM title_files f WHERE f.title_id = "titles"."id")`,
     })
     .from(titles)
     .where(where)
@@ -82,7 +88,7 @@ export async function listTitles(q: string | undefined, page: number, pageSize =
     .offset((page - 1) * pageSize);
   const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(titles).where(where);
   return {
-    rows: rows.map((r) => ({ ...r, copies: Number(r.copies), available: Number(r.available), ebooks: Number(r.ebooks) })),
+    rows: rows.map((r) => ({ ...r, copies: Number(r.copies), available: Number(r.available), ebooks: Number(r.ebooks), pdfs: Number(r.pdfs) })),
     total: Number(total),
     page,
     pageSize,
@@ -146,7 +152,7 @@ export const catalogueRouter = Router();
 
 catalogueRouter.get("/titles", requireRole("assistant"), async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
-  res.json(await listTitles(req.query.q as string | undefined, page));
+  res.json(await listTitles(req.query.q as string | undefined, page, 25, req.query.ebooks === "1"));
 });
 
 catalogueRouter.get("/titles/:id", requireRole("assistant"), async (req, res) => {
