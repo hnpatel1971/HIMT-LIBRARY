@@ -29,14 +29,16 @@ A ticket works once and expires after 60 seconds.
 
 ## Library settings
 
-In `D:\Other Projects\HIMT-LIBRARY\Config\himt-library.env` (or wherever your
-settings file is), add:
+In `C:\himt-library-config\himt-library.env` (or wherever your settings file
+is), add:
 
 ```
 SSO_API_KEY=<a long random secret, shared with the portal team>
 PUBLIC_URL=https://library.himt.in
 # Optional: only these server IPs may ask for tickets
 SSO_ALLOWED_IPS=
+# Sites allowed to show the library in an iframe (the Student Portal), e.g.
+FRAME_ANCESTORS=https://portal.himt.in
 ```
 
 Then run `install.ps1` again (or restart the HIMT-Library service so it picks up the
@@ -122,44 +124,102 @@ curl -X POST https://library.himt.in/api/sso/ticket \
 
 Open the returned `loginUrl` in a browser within 60 seconds.
 
-## Students, from the HIMT Student Portal
+## Students, from the HIMT Student Portal (in an iframe)
 
-Students sign in the same way, from the HIMT Student Portal instead of the
-Employee Portal. Their library **Member ID** is their central HIMT student ID
-(for example `124764`), because the nightly student sync creates members that
-way. Nothing else needs setting up in the library.
+Students open **My library** inside an iframe on the HIMT Student Portal, already
+signed in. Their library **Member ID** is their central HIMT student ID (for
+example `124764`), because the nightly student sync creates members that way.
+They see the e-books staff have given them (with **Read online**), the books
+issued to them with issue and due dates (overdue ones in red), and any fines.
 
-The Student Portal **server** asks for a ticket with `memberCode` (not `employeeId`), so a
-student can never be matched to a staff account:
+### What the library needs
 
-```json
-{ "memberCode": "124764" }
-```
+1. HTTPS on `https://library.himt.in` (browsers only keep the sign-in cookie
+   inside another site's iframe over HTTPS).
+2. In the settings file, the portal's address(es) in `FRAME_ANCESTORS`,
+   separated by spaces, exactly as they appear in the browser's address bar
+   (scheme and host, no path):
 
-Then it redirects the student's browser to `loginUrl`, exactly like the
-Employee Portal does. The student lands on **My library**, where they see their
-loans and fines and can read any e-books staff have given them access to
-(member page > E-books > Give access).
+   ```
+   FRAME_ANCESTORS=https://portal.himt.in
+   ```
 
-Use the same `SSO_API_KEY`. If the Student Portal runs on another server, add its IP to
-`SSO_ALLOWED_IPS` (when that setting is used). A student whose membership is
-switched off gets 403; one who isn't in the library yet gets 404 (they appear
-after the next nightly sync).
+   Then run `install.ps1` again. With it empty, no other site can show the
+   library in an iframe.
 
-Example for the Student Portal (Node / Express), behind a "Library" link in the student menu:
+When `FRAME_ANCESTORS` is set, the library sends
+`Content-Security-Policy: frame-ancestors 'self' <portal>` and its sign-in
+cookie becomes `SameSite=None; Secure; Partitioned`, which is what Chrome,
+Edge and Firefox need to keep a student signed in inside the iframe.
+
+### What the Student Portal does
+
+Each time a student opens the Library page in the portal:
+
+1. The portal's **server** asks for a one-time ticket, sending the student's ID
+   as `memberCode` (not `employeeId`, so a student can never match a staff
+   account) and the same `SSO_API_KEY`:
+
+   ```
+   POST https://library.himt.in/api/sso/ticket
+   Content-Type: application/json
+   X-SSO-Key: <SSO_API_KEY>
+
+   { "memberCode": "124764" }
+   ```
+
+   Answer: `{ "loginUrl": "https://library.himt.in/api/sso/login?ticket=…", "expiresAt": "…" }`
+
+2. The portal puts that `loginUrl` in the iframe's `src` straight away (it works
+   once, for 60 seconds):
+
+   ```html
+   <iframe src="https://library.himt.in/api/sso/login?ticket=…"
+           style="width:100%;height:900px;border:0" title="HIMT Library"></iframe>
+   ```
+
+3. The library signs the student in and shows My library inside the iframe.
+
+Never put the key in the page or browser JavaScript; only the portal's server
+uses it. Ask for a new ticket every time the page loads (a ticket can't be
+reused).
+
+Example for the portal (Node / Express):
 
 ```js
-app.get("/go/library", requireStudentLogin, async (req, res) => {
+app.get("/student/library", requireStudentLogin, async (req, res) => {
   const r = await fetch("https://library.himt.in/api/sso/ticket", {
     method: "POST",
     headers: { "Content-Type": "application/json", "X-SSO-Key": process.env.LIBRARY_SSO_KEY },
     body: JSON.stringify({ memberCode: String(req.user.studentId) }),
   });
   const data = await r.json();
-  if (!r.ok) return res.status(r.status).send(data.error ?? "The library could not sign you in");
-  res.redirect(data.loginUrl);
+  if (!r.ok) return res.render("library-error", { message: data.error });
+  res.render("library", { libraryUrl: data.loginUrl }); // <iframe src="{{libraryUrl}}">
 });
 ```
+
+Example (ASP.NET / C#):
+
+```csharp
+var http = new HttpClient();
+var req = new HttpRequestMessage(HttpMethod.Post, "https://library.himt.in/api/sso/ticket");
+req.Headers.Add("X-SSO-Key", librarySsoKey);
+req.Content = new StringContent("{\"memberCode\":\"" + studentId + "\"}", Encoding.UTF8, "application/json");
+var res = await http.SendAsync(req);
+var json = JsonDocument.Parse(await res.Content.ReadAsStringAsync()).RootElement;
+if (res.IsSuccessStatusCode) ViewBag.LibraryUrl = json.GetProperty("loginUrl").GetString();
+```
+
+Errors: 404 = the student isn't in the library yet (they appear after the next
+nightly sync), 403 = membership switched off, 401 = wrong key (or the portal
+server's IP isn't in `SSO_ALLOWED_IPS`).
+
+**Safari:** Safari blocks cookies in iframes from other sites. If the portal is
+on a `himt.in` address (for example `portal.himt.in`), the library and portal
+count as the same site and Safari works. If the portal is on a different domain,
+Safari users may see "You're not signed in" inside the iframe; give them a
+"Open in new tab" link that uses a fresh `loginUrl`.
 
 ## If something goes wrong
 
