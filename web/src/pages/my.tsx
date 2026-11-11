@@ -52,7 +52,7 @@ export function MyLibrary() {
         {!m ? (
           <div className="card">
             <h1>You're not signed in</h1>
-            <p className="mt-2 text-sm text-slate-600">Open the library again from the Employee Portal to see your books and fines.</p>
+            <p className="mt-2 text-sm text-slate-600">Open the library again from the HIMT portal (Employee Portal or Student Portal) to see your books, e-books and fines.</p>
           </div>
         ) : (
           <>

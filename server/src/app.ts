@@ -36,29 +36,50 @@ function dbErrorCode(err: unknown) {
   return e?.code ?? e?.cause?.code;
 }
 
+/**
+ * Sites allowed to show the library inside an iframe, from FRAME_ANCESTORS
+ * (space- or comma-separated origins, e.g. "https://portal.himt.in").
+ */
+export function frameAncestors() {
+  return (process.env.FRAME_ANCESTORS ?? "")
+    .split(/[\s,]+/)
+    .map((s) => s.trim().replace(/\/+$/, ""))
+    .filter((s) => /^https?:\/\/[A-Za-z0-9.*:-]+$/.test(s));
+}
+
 export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "1mb" }));
 
+  // Who may put the library in an iframe: only the library itself, plus the
+  // portals listed in FRAME_ANCESTORS (the HIMT Student Portal opens My library
+  // in an iframe).
+  const framers = frameAncestors();
+  app.use((_req, res, next) => {
+    res.setHeader("Content-Security-Policy", `frame-ancestors 'self'${framers.map((f) => ` ${f}`).join("")}`);
+    if (!framers.length) res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    next();
+  });
+
   const PgStore = connectPg(session);
-  app.use(
-    session({
-      name: "himt_lib_sid",
-      secret: process.env.SESSION_SECRET || "dev-only-secret-change-me",
-      resave: false,
-      saveUninitialized: false,
-      rolling: true,
-      store: process.env.NODE_ENV === "test" ? undefined : new PgStore({ pool, createTableIfMissing: true }),
-      cookie: {
-        httpOnly: true,
-        sameSite: "lax",
-        // Secure over HTTPS (IIS sets X-Forwarded-Proto), plain over HTTP.
-        secure: "auto",
-        maxAge: 8 * 60 * 60 * 1000,
-      },
-    }),
-  );
+  const store = process.env.NODE_ENV === "test" ? undefined : new PgStore({ pool, createTableIfMissing: true });
+  const base = {
+    name: "himt_lib_sid",
+    secret: process.env.SESSION_SECRET || "dev-only-secret-change-me",
+    resave: false,
+    saveUninitialized: false,
+    rolling: true,
+    store,
+  };
+  const maxAge = 8 * 60 * 60 * 1000;
+  // Normal sign-in cookie: Secure over HTTPS (IIS sets X-Forwarded-Proto), plain over HTTP.
+  const normal = session({ ...base, cookie: { httpOnly: true, sameSite: "lax", secure: "auto", maxAge } });
+  // Inside the Student Portal's iframe the browser only keeps the cookie if it is
+  // SameSite=None and Secure; Partitioned keeps it where third-party cookies are
+  // limited. That needs HTTPS, so plain-HTTP visits keep the normal cookie.
+  const framed = session({ ...base, cookie: { httpOnly: true, sameSite: "none", secure: true, partitioned: true, maxAge } });
+  app.use((req, res, next) => (framers.length && req.secure ? framed : normal)(req, res, next));
   app.use(loadUser);
 
   const api = express.Router();

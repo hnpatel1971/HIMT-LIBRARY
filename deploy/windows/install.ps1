@@ -114,6 +114,9 @@ SITE_PORT=
 SSO_API_KEY=$(New-Secret)
 SSO_ALLOWED_IPS=
 PUBLIC_URL=
+# Sites allowed to show the library in an iframe (the HIMT Student Portal),
+# e.g. https://portal.himt.in. Needs HTTPS on the library. Empty = no iframes.
+FRAME_ANCESTORS=
 "@
   Set-Content -Path $EnvFile -Value $template -Encoding ASCII
 }
