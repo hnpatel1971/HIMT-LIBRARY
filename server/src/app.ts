@@ -63,22 +63,24 @@ export function createApp() {
   });
 
   const PgStore = connectPg(session);
-  const store = process.env.NODE_ENV === "test" ? undefined : new PgStore({ pool, createTableIfMissing: true });
+  // Each session middleware needs its own store object: express-session puts its
+  // cookie settings on the store, so a shared store would give every new
+  // sign-in the iframe cookie (Secure), which is dropped on plain HTTP.
+  const newStore = () => (process.env.NODE_ENV === "test" ? undefined : new PgStore({ pool, createTableIfMissing: true }));
   const base = {
     name: "himt_lib_sid",
     secret: process.env.SESSION_SECRET || "dev-only-secret-change-me",
     resave: false,
     saveUninitialized: false,
     rolling: true,
-    store,
   };
   const maxAge = 8 * 60 * 60 * 1000;
   // Normal sign-in cookie: Secure over HTTPS (IIS sets X-Forwarded-Proto), plain over HTTP.
-  const normal = session({ ...base, cookie: { httpOnly: true, sameSite: "lax", secure: "auto", maxAge } });
+  const normal = session({ ...base, store: newStore(), cookie: { httpOnly: true, sameSite: "lax", secure: "auto", maxAge } });
   // Inside the Student Portal's iframe the browser only keeps the cookie if it is
   // SameSite=None and Secure; Partitioned keeps it where third-party cookies are
   // limited. That needs HTTPS, so plain-HTTP visits keep the normal cookie.
-  const framed = session({ ...base, cookie: { httpOnly: true, sameSite: "none", secure: true, partitioned: true, maxAge } });
+  const framed = session({ ...base, store: newStore(), cookie: { httpOnly: true, sameSite: "none", secure: true, partitioned: true, maxAge } });
   app.use((req, res, next) => (framers.length && req.secure ? framed : normal)(req, res, next));
   app.use(loadUser);
 
