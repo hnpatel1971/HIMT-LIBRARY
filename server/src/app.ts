@@ -51,6 +51,14 @@ export function createApp() {
   const app = express();
   app.set("trust proxy", 1);
   app.use(express.json({ limit: "1mb" }));
+  // library.himt.in sits behind Cloudflare. When Cloudflare reaches IIS over
+  // plain HTTP, IIS reports "http" even though the visitor used HTTPS, and the
+  // iframe sign-in cookie (which must be Secure) would never be set. Cloudflare
+  // says what the visitor used in CF-Visitor, so trust that for the scheme.
+  app.use((req, _res, next) => {
+    if (/"scheme"\s*:\s*"https"/.test(String(req.headers["cf-visitor"] ?? ""))) req.headers["x-forwarded-proto"] = "https";
+    next();
+  });
 
   // Who may put the library in an iframe: only the library itself, plus the
   // portals listed in FRAME_ANCESTORS (the HIMT Student Portal opens My library
